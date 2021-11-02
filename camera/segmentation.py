@@ -16,7 +16,7 @@ from camera import Camera
 
 class Segmentation:
 
-    def FilterNeighbors(self, xyz, neighbors):
+    def filter_neighbors(self, xyz, neighbors):
         #neighbors filtering
         tree = KDTree(xyz, leaf_size = 200)
         dist, ind = tree.query(xyz, k =neighbors)
@@ -42,7 +42,7 @@ class Segmentation:
 
         return xyz
 
-    def FilterRadius(self,xyz,radius,minpoints,visualize):
+    def filter_radius(self,xyz,radius,minpoints,visualize):
 
         #tree query to find radius of of nearest points
         tree = KDTree(xyz, leaf_size = 200)
@@ -68,7 +68,7 @@ class Segmentation:
 
         return xyz
 
-    def SurfaceNormalEstimation(self, xyz, neighbors,   test):
+    def surface_normal_estimation(self, xyz, neighbors,   test):
 
         #tree query for neighbors
         tree = KDTree(xyz)
@@ -78,7 +78,7 @@ class Segmentation:
         Xi = xyz[ind]
 
         #multiprocessing the calculation of the normals
-        normals = p.map(seg.Normals,Xi)
+        normals = p.map(seg.normals,Xi)
 
         #test to show normals calculated maunally
         if test == True:
@@ -90,7 +90,7 @@ class Segmentation:
         return normals
 
     @staticmethod
-    def Normals(Xi):
+    def normals(Xi):
 
 
         #calculatetion of nomals
@@ -116,7 +116,7 @@ class Segmentation:
 
         return  normals
 
-    def Gaussian_image(self, normals):
+    def gaussian_image(self, normals):
 
         #show the guassian image of picture in 3d plot
         fig = plt.figure()
@@ -137,7 +137,7 @@ class Segmentation:
 
         return
 
-    def Crease_removal(self,xyz,normals,neighbors):
+    def crease_removal(self,xyz,normals,neighbors):
 
         #the points the spanc a crease are found by doing a cos sim of the centroid
         # if the cos sim is above a treshhold the points are deemed to not span a crease
@@ -173,7 +173,7 @@ class Segmentation:
 
         return xyz
 
-    def Segmentate(self, xyz, normals, visualize):
+    def segmentate(self, xyz, normals, visualize):
 
         #doing a dbscan to attemp a clustering of points in the pcd
         db = DBSCAN(eps=0.028, min_samples=50).fit(xyz)
@@ -236,7 +236,7 @@ class Segmentation:
                     cv2.line(rgb_img,bottomRight,bottomLeft,(255,0,0),2)
                     cv2.line(rgb_img,bottomLeft,topLeft,(0,255,0),2)
                     cv2.imshow("Image",rgb_img)
-                    cv2.waitKey(0)
+                    cv2.waitKey(1)
 
 
         #calculate pose
@@ -293,14 +293,9 @@ class Segmentation:
 
             img = cv2.drawContours(rgb_img, [imgpts[:4]],-1,(0,0,255),3)
             cv2.imshow('img',img)
-            cv2.waitKey(0)
-
-
-
+            cv2.waitKey(1)
 
         exit()
-        input()
-
         return
 
 
@@ -315,12 +310,15 @@ if __name__ == '__main__':
     #vis.create_window("Point Clouds", width=640, height=480)
     added = True
 
+    #varibles for filtering
     neighbors = 30
     radius = 0.02
     minpoints = 30
+
+    #visualization variables
     test_surface_normals = False
     Visualize_Filter_Radius = False
-    Visualize_db_clusters = True
+    Visualize_db_clusters = False
 
     while 1:
         #compute the rgb and depth img
@@ -332,24 +330,24 @@ if __name__ == '__main__':
         xyz = cam.generate_pcd(depth_img)
 
         #neighbor filtering of pcd
-        FNxyz = seg.FilterNeighbors(xyz, neighbors)
+        FNxyz = seg.filter_neighbors(xyz, neighbors)
 
         #radius filtering of pcd
-        FRxyz = seg.FilterRadius(FNxyz, radius, minpoints,Visualize_Filter_Radius)
+        FRxyz = seg.filter_radius(FNxyz, radius, minpoints,Visualize_Filter_Radius)
 
         #surface normals estimation of pcd and alignment
-        normals = seg.SurfaceNormalEstimation(FRxyz, neighbors, test_surface_normals)
+        normals = seg.surface_normal_estimation(FRxyz, neighbors, test_surface_normals)
 
         #cam.Gaussian_image(normals)
 
         #Crease_removal of the pcd
-        CRxyz = seg.Crease_removal(FRxyz,normals,neighbors)
+        CRxyz = seg.crease_removal(FRxyz,normals,neighbors)
 
         #surface normals estimation of pcd and alignment to see if the result is better
-        normals = seg.SurfaceNormalEstimation(CRxyz, neighbors, test_surface_normals)
+        normals = seg.surface_normal_estimation(CRxyz, neighbors, test_surface_normals)
 
         #clustering/segmentate of pcd
-        seg.Segmentate(CRxyz,normals,Visualize_db_clusters)
+        seg.segmentate(CRxyz,normals,Visualize_db_clusters)
 
         #visualize the pcd
         pcd.points = o3d.utility.Vector3dVector(CRxyz)

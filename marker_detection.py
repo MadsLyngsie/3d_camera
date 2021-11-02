@@ -2,6 +2,7 @@ import cv2
 from cv2 import aruco
 import numpy as np
 from camera import Camera
+from camera import Segmentation
 
 cam = Camera()
 aruco_dict = aruco.Dictionary_get(aruco.DICT_6X6_250)
