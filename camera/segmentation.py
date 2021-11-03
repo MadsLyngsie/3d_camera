@@ -198,14 +198,16 @@ class Segmentation:
 
         return
 
-    def marker_detection(self, rgb_img):
+    def bin_removal(self,xyz, rgb_img):
 
+        marker_size = 0.1 #size of marker in M
         type_arucodict = cv2.aruco.DICT_ARUCO_ORIGINAL
         arucoDict = cv2.aruco.Dictionary_get(type_arucodict)
         arucoParams = cv2.aruco.DetectorParameters_create()
         (corners, ids, rejected) = cv2.aruco.detectMarkers(rgb_img, arucoDict,
         	parameters=arucoParams)
 
+        tvec_temp = np.array([1,1,1])
 
         draw = False
         if draw == True:
@@ -238,65 +240,51 @@ class Segmentation:
                     cv2.imshow("Image",rgb_img)
                     cv2.waitKey(1)
 
+        move = np.array([[[0.05,0.0375,0]]])
 
-        #calculate pose
-        ArUCoSize = (2,2)
-        #ArUCoSize = (7,7)#chess
+        frame_markers = cv2.aruco.drawDetectedMarkers(rgb_img.copy(), corners, ids)
+        if len(corners) > 0:
+            ids = ids.flatten()
 
+            for i in range(np.shape(corners)[0]):
+                #estimation of aruco pose
+                rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(corners[i], marker_size, cam.camera_mat, cam.distCoeffs)
 
-        objp = np.array([[0,0,0],[0,0.1,0],[0.1,0.1,0],[0.1,0,0]])
-        #objp = np.zeros((ArUCoSize[0] * ArUCoSize[1], 3), np.float32)
-        objp[:,:2] = np.mgrid[0:ArUCoSize[0], 0:ArUCoSize[1]].T.reshape(-1,2)
-        #axis = np.float32([3,0,0], [0,3,0, [0,0,-3]]).reshape(-1,3)
-        axisbox = np.float32([[0,0,0], [0,1,0], [1,1,0], [1,0,0],
-                                [0,0,-1], [0,1,-1],[1,1,-1], [1,0,-1]])
+                tvecs = tvecs - move
 
+                print(rvecs,'rvecs')
 
-        #img = cv2.imread(rgb_img)
-        #gray = cv2.cvtColor(rgb_img,cv2.COLOR_BGR2GRAY)
+                frame_markers = cv2.drawFrameAxes(frame_markers, cam.camera_mat, cam.distCoeffs, rvecs, tvecs, length=0.05, thickness=2)
 
-        #print(np.array([corners]),'cornersAruco')
-        #ret, corners = cv2.findChessboardCorners(gray, (7,7),None)
+                #constroction of homugeous transformatiob matrix
+                rotmat, _ = cv2.Rodrigues(rvecs)
+                tvecs = np.reshape(tvecs, (3, 1))
+                cam2marker = np.concatenate((rotmat, tvecs), axis = 1)
+                #cam2marker = np.concatenate((cam2marker, np.array([[0, 0, 0, 1]])), axis = 0)
+                cv2.imshow("Image",frame_markers)
+                cv2.waitKey(1)
 
-        #print(ret,'ret')
-        #print(corners,'cornerschess')
+        bin_width    =  0.3 #M real is 0.34
+        bin_length   =  0.4 #M real is 0.44
+        bin_height   =  0.15 #M real is 0.2
 
-        #corners = np.array([[topLeft[0],topLeft[1],[topRight[0],topRight[1]],[bottomRight[0], bottomRight[1]],
-        #            [bottomLeft[0],bottomLeft[1]]]])
+        xyz_pose_marker = np.transpose(np.array([cam2marker[:,0]*bin_width,-cam2marker[:,1] * bin_length,cam2marker[:,2] * bin_height]))
 
-        corners = np.array(corners)
-        print(corners,'corners')
+        xyz_ind = np.zeros(np.size(xyz))
+        print(xyz_ind,'xyz_ind')
+        for idx,point in enumerate(xyz):
 
-        #criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-        #corners2 = cv2.cornerSubPix(gray,corners,(11,11),(-1,-1),criteria)
+            projection = np.dot(point,xyz_pose_marker)
+            print(xyz_pose_marker,'xyz_pose_marker')
+            print(projection,'projecting')
+            if projection[0] < 1 and projection [1] < 1 and projection[2] < 1:
+                xyz_ind[idx] = int(idx)
 
-        #print(corners2,'corners2')
+        print(xyz_ind,'xyz_ind')
+        print(len(xyz_ind),'xyz_ind')
+        xyz = xyz[xyz_ind.astype(int)]
 
-        ret, rvecs ,tvecs = cv2.solvePnP(objp, corners, self.camera_mat, self.distCoeffs)
-        imgpts, jac = cv2.projectPoints(axisbox, rvecs, tvecs, self.camera_mat, self.distCoeffs)
-
-        #print(imgpts,'imgpts')
-        #print(jac,'jac')
-
-        print(imgpts,'imgpts')
-
-        imgpts = np.int32(imgpts).reshape(-1,2)
-
-        print(imgpts,'imgpts2')
-
-        Draw = True
-        if Draw == True:
-            img = cv2.drawContours(rgb_img, [imgpts[:4]],-1,(0,255,0),-3)
-
-            for i,j in zip(range(4),range(4,8)):
-                img = cv2.line(rgb_img, tuple(imgpts[i]),tuple(imgpts[j]),(255),3)
-
-            img = cv2.drawContours(rgb_img, [imgpts[:4]],-1,(0,0,255),3)
-            cv2.imshow('img',img)
-            cv2.waitKey(1)
-
-        exit()
-        return
+        return xyz
 
 
 if __name__ == '__main__':
@@ -307,7 +295,7 @@ if __name__ == '__main__':
     pcd = o3d.geometry.PointCloud()
     vis = o3d.visualization.Visualizer()
 
-    #vis.create_window("Point Clouds", width=640, height=480)
+    vis.create_window("Point Clouds", width=640, height=480)
     added = True
 
     #varibles for filtering
@@ -324,7 +312,7 @@ if __name__ == '__main__':
         #compute the rgb and depth img
         rgb_img, depth_img = cam.stream(colored_depth=False)
 
-        #seg.marker_detection(rgb_img)
+
 
         #generate pcd
         xyz = cam.generate_pcd(depth_img)
@@ -346,14 +334,17 @@ if __name__ == '__main__':
         #surface normals estimation of pcd and alignment to see if the result is better
         normals = seg.surface_normal_estimation(CRxyz, neighbors, test_surface_normals)
 
+        #remove bin from point cloud
+        binxyz = seg.bin_removal(CRxyz,rgb_img)
+
         #clustering/segmentate of pcd
-        seg.segmentate(CRxyz,normals,Visualize_db_clusters)
+        #seg.segmentate(binxyz,normals,Visualize_db_clusters)
 
         #visualize the pcd
         pcd.points = o3d.utility.Vector3dVector(CRxyz)
 
         #visualize the depth_img with color/gray scale
-        rgb_img, depth_img = cam.stream(colored_depth=True)
+        #rgb_img, depth_img = cam.stream(colored_depth=True)
 
         ## visualize rgb and depth image
         #cv2.imshow("rgb", rgb_img)
