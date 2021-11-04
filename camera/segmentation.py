@@ -200,7 +200,7 @@ class Segmentation:
 
     def bin_removal(self,xyz, rgb_img):
 
-        marker_size = 0.1 #size of marker in M
+        marker_size = 0.105 #size of marker in M
         type_arucodict = cv2.aruco.DICT_ARUCO_ORIGINAL
         arucoDict = cv2.aruco.Dictionary_get(type_arucodict)
         arucoParams = cv2.aruco.DetectorParameters_create()
@@ -240,7 +240,7 @@ class Segmentation:
                     cv2.imshow("Image",rgb_img)
                     cv2.waitKey(1)
 
-        move = np.array([[[0.05,0.0375,0]]])
+
 
         frame_markers = cv2.aruco.drawDetectedMarkers(rgb_img.copy(), corners, ids)
         if len(corners) > 0:
@@ -249,18 +249,13 @@ class Segmentation:
             for i in range(np.shape(corners)[0]):
                 #estimation of aruco pose
                 rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(corners[i], marker_size, cam.camera_mat, cam.distCoeffs)
-
-                tvecs = tvecs - move
-
-                print(rvecs,'rvecs')
-
                 frame_markers = cv2.drawFrameAxes(frame_markers, cam.camera_mat, cam.distCoeffs, rvecs, tvecs, length=0.05, thickness=2)
 
                 #constroction of homugeous transformatiob matrix
                 rotmat, _ = cv2.Rodrigues(rvecs)
                 tvecs = np.reshape(tvecs, (3, 1))
                 cam2marker = np.concatenate((rotmat, tvecs), axis = 1)
-                #cam2marker = np.concatenate((cam2marker, np.array([[0, 0, 0, 1]])), axis = 0)
+                cam2markerHom = np.concatenate((cam2marker, np.array([[0, 0, 0, 1]])), axis = 0)
                 cv2.imshow("Image",frame_markers)
                 cv2.waitKey(1)
 
@@ -268,20 +263,54 @@ class Segmentation:
         bin_length   =  0.4 #M real is 0.44
         bin_height   =  0.15 #M real is 0.2
 
-        xyz_pose_marker = np.transpose(np.array([cam2marker[:,0]*bin_width,-cam2marker[:,1] * bin_length,cam2marker[:,2] * bin_height]))
+        marker_bin_corner = np.array([[-marker_size/2],[marker_size/2],[0],[1]])
+        print(marker_bin_corner,'marker_bin_corner')
+        #marker_bin_corner = np.reshape(marker_bin_corner, (3, 1))
+
+
+
+        bin_corner = np.dot(cam2markerHom,marker_bin_corner)
+        print(bin_corner,'bin_corner')
+        print(bin_corner[2][0],'bin_corner')
+        print(bin_corner[:3],'bin_corner')
+        bin_corner_2d = (np.dot(cam.camera_mat , bin_corner[:3])/bin_corner[2][0])[:2]
+        print(bin_corner,'bin_corner')
+        print(bin_corner_2d,'bin_corner_2d')
+
+        cv2.circle(rgb_img, (int(bin_corner_2d[0]),int(bin_corner_2d[1])), radius=5, color=(0, 0, 255), thickness=2)
+        cv2.imshow("Image",rgb_img)
+        cv2.waitKey(0)
+
+
+        hom_trans_to_marker_corner = np.zeros((4,4))
+        np.fill_diagonal(hom_trans_to_marker_corner,1)
+        hom_trans_to_marker_corner[0,3] = bin_corner[0][0]
+        hom_trans_to_marker_corner[1,3] = bin_corner[1][0]
+        hom_trans_to_marker_corner[2,3] = bin_corner[2][0]
+
+        print(hom_trans_to_marker_corner,'hom_trans_to_marker_corner')
+        bin_corner_pose = np.dot(hom_trans_to_marker_corner,cam2markerHom)
+        print(bin_corner_pose,'bin_corner_pose')
+
+        print(np.linalg.norm(bin_corner_pose[2,:]),'len')
+
+
+        bin_size = np.array([[bin_width],[bin_length],[bin_height]])
+        bin_projection_pose = bin_corner
+        #xyz_pose_marker = np.transpose(np.array([cam2marker[:,0]*bin_width,-cam2marker[:,1] * bin_length,cam2marker[:,2] * bin_height]))
 
         xyz_ind = np.zeros(np.size(xyz))
-        print(xyz_ind,'xyz_ind')
+        #print(xyz_ind,'xyz_ind')
         for idx,point in enumerate(xyz):
 
-            projection = np.dot(point,xyz_pose_marker)
-            print(xyz_pose_marker,'xyz_pose_marker')
-            print(projection,'projecting')
+            projection = np.dot(point,bin_corner)
+            #print(xyz_pose_marker,'xyz_pose_marker')
+            #print(projection,'projecting')
             if projection[0] < 1 and projection [1] < 1 and projection[2] < 1:
                 xyz_ind[idx] = int(idx)
 
-        print(xyz_ind,'xyz_ind')
-        print(len(xyz_ind),'xyz_ind')
+        #print(xyz_ind,'xyz_ind')
+        #print(len(xyz_ind),'xyz_ind')
         xyz = xyz[xyz_ind.astype(int)]
 
         return xyz
