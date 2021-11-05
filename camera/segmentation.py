@@ -259,59 +259,39 @@ class Segmentation:
                 cv2.imshow("Image",frame_markers)
                 cv2.waitKey(1)
 
-        bin_width    =  0.3 #M real is 0.34
-        bin_length   =  0.4 #M real is 0.44
-        bin_height   =  0.15 #M real is 0.2
-
         marker_bin_corner = np.array([[-marker_size/2],[marker_size/2],[0],[1]])
-        print(marker_bin_corner,'marker_bin_corner')
-        #marker_bin_corner = np.reshape(marker_bin_corner, (3, 1))
-
-
-
-        bin_corner = np.dot(cam2markerHom,marker_bin_corner)
-        print(bin_corner,'bin_corner')
-        print(bin_corner[2][0],'bin_corner')
-        print(bin_corner[:3],'bin_corner')
-        bin_corner_2d = (np.dot(cam.camera_mat , bin_corner[:3])/bin_corner[2][0])[:2]
-        print(bin_corner,'bin_corner')
-        print(bin_corner_2d,'bin_corner_2d')
-
-        cv2.circle(rgb_img, (int(bin_corner_2d[0]),int(bin_corner_2d[1])), radius=5, color=(0, 0, 255), thickness=2)
-        cv2.imshow("Image",rgb_img)
-        cv2.waitKey(0)
-
 
         hom_trans_to_marker_corner = np.zeros((4,4))
         np.fill_diagonal(hom_trans_to_marker_corner,1)
-        hom_trans_to_marker_corner[0,3] = bin_corner[0][0]
-        hom_trans_to_marker_corner[1,3] = bin_corner[1][0]
-        hom_trans_to_marker_corner[2,3] = bin_corner[2][0]
+        hom_trans_to_marker_corner[0,3] = marker_bin_corner[0][0]
+        hom_trans_to_marker_corner[1,3] = marker_bin_corner[1][0]
+        hom_trans_to_marker_corner[2,3] = marker_bin_corner[2][0]
 
-        print(hom_trans_to_marker_corner,'hom_trans_to_marker_corner')
-        bin_corner_pose = np.dot(hom_trans_to_marker_corner,cam2markerHom)
-        print(bin_corner_pose,'bin_corner_pose')
+        pose_marker_corner = np.dot(cam2markerHom,hom_trans_to_marker_corner)
 
-        print(np.linalg.norm(bin_corner_pose[2,:]),'len')
+        row = np.ones(len(xyz))
+        xyz1 = np.concatenate((np.transpose(xyz), np.array([row])), axis = 0)
+
+        markerpcd = np.dot(cam2marker,xyz1)
+
+        bin_width    =  0.2 #M real is 0.34
+        bin_length   =  0.4 #M real is 0.44
+        bin_height   =  0.5 #M real is 0.2
 
 
-        bin_size = np.array([[bin_width],[bin_length],[bin_height]])
-        bin_projection_pose = bin_corner
-        #xyz_pose_marker = np.transpose(np.array([cam2marker[:,0]*bin_width,-cam2marker[:,1] * bin_length,cam2marker[:,2] * bin_height]))
 
-        xyz_ind = np.zeros(np.size(xyz))
-        #print(xyz_ind,'xyz_ind')
-        for idx,point in enumerate(xyz):
+        condt = np.where((markerpcd[0] <= bin_width) & (-markerpcd[1] <= bin_length) & (markerpcd[2] <= bin_height) )
 
-            projection = np.dot(point,bin_corner)
-            #print(xyz_pose_marker,'xyz_pose_marker')
-            #print(projection,'projecting')
-            if projection[0] < 1 and projection [1] < 1 and projection[2] < 1:
-                xyz_ind[idx] = int(idx)
+        xyz = xyz[condt]
 
-        #print(xyz_ind,'xyz_ind')
-        #print(len(xyz_ind),'xyz_ind')
-        xyz = xyz[xyz_ind.astype(int)]
+
+        #########show 2d circle on the corner of the marker useing the 3d pose
+        # bin_corner = np.dot(cam2markerHom,marker_bin_corner)
+        # bin_corner_2d = (np.dot(cam.camera_mat , bin_corner[:3])/bin_corner[2][0])[:2]
+        # cv2.circle(rgb_img, (int(bin_corner_2d[0]),int(bin_corner_2d[1])), radius=5, color=(0, 0, 255), thickness=2)
+        # cv2.imshow("Image1",rgb_img)
+        # cv2.waitKey(0)
+
 
         return xyz
 
@@ -370,7 +350,9 @@ if __name__ == '__main__':
         #seg.segmentate(binxyz,normals,Visualize_db_clusters)
 
         #visualize the pcd
-        pcd.points = o3d.utility.Vector3dVector(CRxyz)
+        pcd.points = o3d.utility.Vector3dVector(binxyz)
+
+        pcd.transform([[1,0,0,0],[0,-1,0,0],[0,0,-1,0],[0,0,0,1]])
 
         #visualize the depth_img with color/gray scale
         #rgb_img, depth_img = cam.stream(colored_depth=True)
