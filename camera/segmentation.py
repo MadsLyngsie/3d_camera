@@ -176,7 +176,7 @@ class Segmentation:
     def segmentate(self, xyz, normals, visualize):
 
         #doing a dbscan to attemp a clustering of points in the pcd
-        db = DBSCAN(eps=0.028, min_samples=50).fit(xyz)
+        db = DBSCAN(eps=0.022, min_samples=50).fit(xyz)
         core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
         core_samples_mask[db.core_sample_indices_] = True
         labels = db.labels_
@@ -184,6 +184,7 @@ class Segmentation:
         #save the clusters and the noise from the scan
         n_clusters = len(set(labels)) - (1 if -1 in labels else 0)
         n_noise = list(labels).count(-1)
+
 
         #visualize the clusters
         if visualize == True:
@@ -196,10 +197,15 @@ class Segmentation:
             ax.set_zlabel('Z Label')
             plt.show()
 
-        return
+        return labels
 
-    def bin_removal(self,xyz, rgb_img):
+    def bin_removal(self,xyz, rgb_img, draw, draw2d):
+        #this function removes the points of the bin
+        #this is done by est the pose of a aruco marker and useing the size of the bin
+        #the pound cloud data points are transformed to be seen from the bin and
+        #then compared to the length width and height of the bin
 
+        #define marker finder parameters and find marker
         marker_size = 0.105 #size of marker in M
         type_arucodict = cv2.aruco.DICT_ARUCO_ORIGINAL
         arucoDict = cv2.aruco.Dictionary_get(type_arucodict)
@@ -207,41 +213,8 @@ class Segmentation:
         (corners, ids, rejected) = cv2.aruco.detectMarkers(rgb_img, arucoDict,
         	parameters=arucoParams)
 
-        tvec_temp = np.array([1,1,1])
 
-        draw = False
-        if draw == True:
-            if len(corners) > 0:
-                ids = ids.flatten()
-
-                for (markerCorner, markerID) in zip(corners, ids):
-                    # extract the marker corners (which are always returned in
-
-                    # top-left, top-right, bottom-right, and bottom-left order)
-                    corners = markerCorner.reshape((4, 2))
-                    (topLeft, topRight, bottomRight, bottomLeft) = corners
-
-                    # convert each of the (x, y)-coordinate pairs to integers
-                    topRight = (int(topRight[0]), int(topRight[1]))
-                    bottomRight = (int(bottomRight[0]), int(bottomRight[1]))
-                    bottomLeft = (int(bottomLeft[0]), int(bottomLeft[1]))
-                    topLeft = (int(topLeft[0]), int(topLeft[1]))
-
-                    #print(topLeft,'topLeft')
-                    #print(topRight,'topRight')
-                    #print(bottomRight,'bottomRight')
-                    #print(bottomLeft,'bottomLeft')
-
-                    #drawline around marker
-                    cv2.line(rgb_img,topLeft,topRight,(255,0,255),2)
-                    cv2.line(rgb_img,topRight,bottomRight,(0,0,255),2)
-                    cv2.line(rgb_img,bottomRight,bottomLeft,(255,0,0),2)
-                    cv2.line(rgb_img,bottomLeft,topLeft,(0,255,0),2)
-                    cv2.imshow("Image",rgb_img)
-                    cv2.waitKey(1)
-
-
-
+        #est the pose of the marker
         frame_markers = cv2.aruco.drawDetectedMarkers(rgb_img.copy(), corners, ids)
         if len(corners) > 0:
             ids = ids.flatten()
@@ -256,45 +229,73 @@ class Segmentation:
                 tvecs = np.reshape(tvecs, (3, 1))
                 cam2marker = np.concatenate((rotmat, tvecs), axis = 1)
                 cam2markerHom = np.concatenate((cam2marker, np.array([[0, 0, 0, 1]])), axis = 0)
-                cv2.imshow("Image",frame_markers)
-                cv2.waitKey(1)
 
+                #draw line from the found marker
+                if draw == True:
+                    cv2.imshow("Image",frame_markers)
+                    cv2.waitKey(1)
+
+        #define the markers corner in bin the bin frame
         marker_bin_corner = np.array([[-marker_size/2],[marker_size/2],[0],[1]])
 
+        #construct homugeous transformation matrix for 2d
         hom_trans_to_marker_corner = np.zeros((4,4))
         np.fill_diagonal(hom_trans_to_marker_corner,1)
         hom_trans_to_marker_corner[0,3] = marker_bin_corner[0][0]
         hom_trans_to_marker_corner[1,3] = marker_bin_corner[1][0]
         hom_trans_to_marker_corner[2,3] = marker_bin_corner[2][0]
 
-        pose_marker_corner = np.dot(cam2markerHom,hom_trans_to_marker_corner)
-
+        #make pcd homugeous
         row = np.ones(len(xyz))
         xyz1 = np.concatenate((np.transpose(xyz), np.array([row])), axis = 0)
 
-        markerpcd = np.dot(cam2marker,xyz1)
+        #move the pcd to the
+        markerpcd = np.dot(cam2markerHom,xyz1)
 
-        bin_width    =  0.2 #M real is 0.34
-        bin_length   =  0.4 #M real is 0.44
-        bin_height   =  0.5 #M real is 0.2
+        bin_width    =  0.22 #M real is 0.34
+        bin_length   =  0.39 #M real is 0.44
+        bin_height   =  0.175 #M real is 0.2
 
-
-
-        condt = np.where((markerpcd[0] <= bin_width) & (-markerpcd[1] <= bin_length) & (markerpcd[2] <= bin_height) )
+        condt = np.where((markerpcd[0] >= -0.045)  & (markerpcd[0] <= bin_width) &
+                         (markerpcd[1] <= 0.05) & (markerpcd[1] >= -bin_length) &
+                         (markerpcd[2] >= 0.05) & (markerpcd[2] <= bin_height) )
 
         xyz = xyz[condt]
 
 
-        #########show 2d circle on the corner of the marker useing the 3d pose
-        # bin_corner = np.dot(cam2markerHom,marker_bin_corner)
-        # bin_corner_2d = (np.dot(cam.camera_mat , bin_corner[:3])/bin_corner[2][0])[:2]
-        # cv2.circle(rgb_img, (int(bin_corner_2d[0]),int(bin_corner_2d[1])), radius=5, color=(0, 0, 255), thickness=2)
-        # cv2.imshow("Image1",rgb_img)
-        # cv2.waitKey(0)
-
+        if draw2d == True:
+            ########show 2d circle on the corner of the marker useing the 3d pose
+            bin_corner = np.dot(cam2markerHom,marker_bin_corner)
+            bin_corner_2d = (np.dot(cam.camera_mat , bin_corner[:3])/bin_corner[2][0])[:2]
+            cv2.circle(rgb_img, (int(bin_corner_2d[0]),int(bin_corner_2d[1])), radius=5, color=(0, 0, 255), thickness=2)
+            cv2.imshow("Image1",rgb_img)
+            cv2.waitKey(1)
 
         return xyz
 
+    def surface_estimation(self, xyz, clusterlabels):
+
+        clusters = np.array([np.amax(clusterlabels)])
+        cluster_idx = 0
+
+        print(type(clusterlabels),'clusterlabels')
+        print(clusterlabels,'clusterlabels')
+
+        i = np.arange(np.amax(clusterlabels))
+
+        cluster_idx = np.where((clusterlabels == i))
+
+        clusters[i] = xyz[cluster_idx]
+
+        #for i in range(np.amax(clusterlabels)):
+
+            #cluster_idx = np.where(clusterlabels = i)
+
+        print(clusters,'clusters')
+
+        exit()
+
+        return
 
 if __name__ == '__main__':
     cam = Camera()
@@ -314,8 +315,10 @@ if __name__ == '__main__':
 
     #visualization variables
     test_surface_normals = False
-    Visualize_Filter_Radius = False
-    Visualize_db_clusters = False
+    visualize_Filter_Radius = False
+    visualize_db_clusters = False
+    draw_aruco_corner = False
+    draw2d_aruco_marker = False
 
     while 1:
         #compute the rgb and depth img
@@ -330,7 +333,7 @@ if __name__ == '__main__':
         FNxyz = seg.filter_neighbors(xyz, neighbors)
 
         #radius filtering of pcd
-        FRxyz = seg.filter_radius(FNxyz, radius, minpoints,Visualize_Filter_Radius)
+        FRxyz = seg.filter_radius(FNxyz, radius, minpoints,visualize_Filter_Radius)
 
         #surface normals estimation of pcd and alignment
         normals = seg.surface_normal_estimation(FRxyz, neighbors, test_surface_normals)
@@ -344,14 +347,17 @@ if __name__ == '__main__':
         normals = seg.surface_normal_estimation(CRxyz, neighbors, test_surface_normals)
 
         #remove bin from point cloud
-        binxyz = seg.bin_removal(CRxyz,rgb_img)
+        binxyz = seg.bin_removal(CRxyz,rgb_img, draw = draw_aruco_corner, draw2d = draw2d_aruco_marker)
 
         #clustering/segmentate of pcd
-        #seg.segmentate(binxyz,normals,Visualize_db_clusters)
+        labels = seg.segmentate(binxyz,normals,visualize_db_clusters)
+
+        seg.surface_estimation(binxyz, labels)
 
         #visualize the pcd
         pcd.points = o3d.utility.Vector3dVector(binxyz)
 
+        #Transfor viewpoint to look form the camera perspective
         pcd.transform([[1,0,0,0],[0,-1,0,0],[0,0,-1,0],[0,0,0,1]])
 
         #visualize the depth_img with color/gray scale
