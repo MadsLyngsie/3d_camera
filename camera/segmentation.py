@@ -638,8 +638,9 @@ class Segmentation:
                 test_convexity = np.transpose(np.cross(np.cross(cluster_normals,ni),dj))
 
                 if (test_convexity >= 0):
-                    convexity = 1
+                    convexity = 1 ## convex
                 elif (test_convexity <= 0):
+                    convexity = 0 ## concave
 
 
 
