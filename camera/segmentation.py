@@ -318,7 +318,7 @@ class Segmentation:
         markerpcd = np.dot(cam2markerHom,xyz1)
 
         ##############################################
-        # Best
+        # # Best
         # bin_width    =  0.34 #M real is 0.34 #0.22
         # bin_length   =  0.44 #M real is 0.44 #0.39
         # bin_height   =  0.5 #M real is 0.2 #0.175
@@ -328,10 +328,10 @@ class Segmentation:
         #                  (markerpcd[2] >= 0.19) & (markerpcd[2] <= bin_height) )
 
         ##############################################
-        # Best
+        # Best 2
         bin_width    =  0.28 #M real is 0.34 #0.22
-        bin_length   =  0.44 #M real is 0.44 #0.39
-        bin_height   =  0.5 #M real is 0.2 #0.175
+        bin_length   =  0.43 #M real is 0.44 #0.39
+        bin_height   =  0.6 #M real is 0.2 #0.175
 
         condt = np.where((markerpcd[0] >= -0.075)  & (markerpcd[0] <= bin_width) &
                          (markerpcd[1] <= -0.075) & (markerpcd[1] >= -bin_length) &
@@ -416,6 +416,9 @@ class Segmentation:
         principal_norals = []
         Cosine_Similarity_primitive = []
         shape_guess = []
+        convexity_guess = []
+        uni_conxeity = []
+        surface_class = []
 
         labels_unq = np.unique(clusterlabels)
         print(labels_unq,'labels_unq')
@@ -546,14 +549,19 @@ class Segmentation:
             print(eth,'eth')
             unique = []
             counts = []
-
             mse_max_app = []
             mse_min_app = []
+            convex_guess = 0
+            concave_guess = 0
+            neither_guess = 0
+            convex = 0
+            concave = 0
+
+
+
 
             # print(clusters,'clusters')
-            #
             # print(clusters[0][:,0],'clusters')
-
             #clusters0 = clusters[:,0]
 
             mi = []
@@ -635,15 +643,38 @@ class Segmentation:
                 # print(cluster_normals,'cluster_normals')
                 # print(ni,'ni')
 
-                test_convexity = np.transpose(np.cross(np.cross(cluster_normals,ni),dj))
+                # print(np.squeeze((np.cross(np.cross(cluster_normals,ni),dj))),'stack')
+                # print(np.vstack(ni),'ni')
 
-                if (test_convexity >= 0):
-                    convexity = 1 ## convex
-                elif (test_convexity <= 0):
-                    convexity = 0 ## concave
+                convexity = np.dot( np.squeeze(np.vstack(np.cross(np.cross(cluster_normals,ni),dj))) ,np.vstack(ni))
+
+                # print(len(convexity),'convexity')
+
+                for k in range(len(convexity)):
+
+                    if (convexity[k] >= 0):
+                        convex += 1
+                    else:
+                        concave += 1
+
+                # print(convex,'convex')
+                # print(concave,'concave')
+
+                s = convex / concave
+
+                sth = 1.5
 
 
+                if (s>sth):
+                    convex_guess += 1
+                elif (s<(1/sth)):
+                    concave_guess += 1
+                elif (((1/sth)<s) and (s<sth)):
+                    neither_guess += 1
 
+            print(convex_guess,'convex_guess')
+            print(concave_guess,'concave_guess')
+            print(neither_guess,'neither_guess')
             # print(mi,'mi')
             # print(dj,'dj')
             # print(convexity,'convexity')
@@ -651,20 +682,51 @@ class Segmentation:
 
             # print(np.mean(mse_max_app),'mse_max_app')
             # print(np.mean(mse_min_app),'mse_min_app')
-            #
             # print(cluster_concl,'cluster_concl')
 
+            uni_conxeity.append(convex_guess)
+            uni_conxeity.append(concave_guess)
+            uni_conxeity.append(neither_guess)
+            unique_uni_conxeity, counts_uni_conxeity = np.unique(uni_conxeity, return_counts=True)
             unique, counts = np.unique(cluster_concl, return_counts=True)
 
             # print(unique,'unique')
             # print(counts,'counts')
 
+            convexity_guess.append(np.array(unique[np.where(counts == np.amax(counts))]))
             shape_guess.append(np.array(unique[np.where(counts == np.amax(counts))]))
 
-            # print(np.squeeze(shape_guess),'shape_guess')
+            # plane   = 0
+            # ridge   = 1
+            # peak    = 2
+            # valley  = 3
+            # pit     = 4
+            # saddle  = 5
+
+            if ( (shape_guess[i] == 0) and (convexity_guess[i] == 0) ):
+                surface_class.append(0)
+            if ( (shape_guess[i] == 0) and (convexity_guess[i] == 1) ):
+                surface_class.append(0)
+            if ( (shape_guess[i] == 0) and (convexity_guess[i] == 2) ):
+                surface_class.append(0)
+            if ( (shape_guess[i] == 1) and (convexity_guess[i] == 0) ):
+                surface_class.append(1)
+            if ( (shape_guess[i] == 1) and (convexity_guess[i] == 1) ):
+                surface_class.append(3)
+            if ( (shape_guess[i] == 1) and (convexity_guess[i] == 2) ):
+                surface_class.append(5)
+            if ( (shape_guess[i] == 2) and (convexity_guess[i] == 0) ):
+                surface_class.append(2)
+            if ( (shape_guess[i] == 2) and (convexity_guess[i] == 1) ):
+                surface_class.append(4)
+            if ( (shape_guess[i] == 2) and (convexity_guess[i] == 2) ):
+                surface_class.append(5)
 
 
 
+            print(np.squeeze(shape_guess),'shape_guess')
+            print(np.squeeze(convexity_guess),'convexity_guess')
+            print(surface_class,'surface_class')
         return
 
 
@@ -723,6 +785,8 @@ if __name__ == '__main__':
 
         #### first prediction of shape #####
         seg.non_parametric_surface_class(binxyz, labels, neighbors)
+
+        seg.segmentate(crxyz,normals,visualize_db_clusters)
 
         ########### not in use yet ###########
         #seg.surface_estimation(binxyz, labels, neighbors)
