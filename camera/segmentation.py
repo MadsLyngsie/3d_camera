@@ -136,12 +136,14 @@ class Segmentation:
 
         v = v[:,idx]
 
-        #keep the smalles normals
-        normals = v[:,1]
+        #keep the biggest normals
+        normals = w[:,1]
 
-        #flip normals so they are all in the same direction
-        if normals.dot(xm)>0:
-            normals = -normals
+        print(w,'w_max')
+
+        # #flip normals so they are all in the same direction
+        # if normals.dot(xm)>0:
+        #     normals = -normals
 
         return  normals
 
@@ -160,11 +162,13 @@ class Segmentation:
         v = v[:,idx]
 
         #keep the smalles normals
-        normals = v[:,0]
+        normals = w[:,0]
 
-        #flip normals so they are all in the same direction
-        if normals.dot(xm)>0:
-            normals = -normals
+        print(w,'w_min')
+
+        # #flip normals so they are all in the same direction
+        # if normals.dot(xm)>0:
+        #     normals = -normals
 
         return  normals
 
@@ -216,7 +220,7 @@ class Segmentation:
 
             Cosine_Similarity[i] = np.dot(anorm, bnorm)
 
-            temp_index = np.where(Cosine_Similarity[i] > 0.75)
+            temp_index = np.where(Cosine_Similarity[i] > 0.80) ## 0.75 is good
 
             #keep points that does not span a crease
             if len(temp_index[0]) >  29:
@@ -295,9 +299,9 @@ class Segmentation:
                         cv2.imshow("Image",frame_markers)
                         cv2.waitKey(1)
 
-                    np.savetxt('camera/frame.txt', cam2markerHom)
+                    np.savetxt('camera/frame2.txt', cam2markerHom)
         if read_from_file == True:
-            cam2markerHom = np.loadtxt('camera/frame.txt')
+            cam2markerHom = np.loadtxt('camera/frame2.txt')
 
 
         #define the markers corner in bin the bin frame
@@ -319,23 +323,23 @@ class Segmentation:
 
         ##############################################
         # # Best
-        # bin_width    =  0.34 #M real is 0.34 #0.22
-        # bin_length   =  0.44 #M real is 0.44 #0.39
-        # bin_height   =  0.5 #M real is 0.2 #0.175
+        bin_width    =  0.34 #M real is 0.34 #0.22
+        bin_length   =  0.44 #M real is 0.44 #0.39
+        bin_height   =  0.5 #M real is 0.2 #0.175
+
+        condt = np.where((markerpcd[0] >= -0.05)  & (markerpcd[0] <= bin_width) &
+                         (markerpcd[1] <= -0.05) & (markerpcd[1] >= -bin_length) &
+                         (markerpcd[2] >= 0.2) & (markerpcd[2] <= bin_height) )
+
+        ##############################################
+        # # Best 2
+        # bin_width    =  0.28 #M real is 0.34 #0.22
+        # bin_length   =  0.47 #M real is 0.44 #0.39
+        # bin_height   =  0.75 #M real is 0.2 #0.175
         #
         # condt = np.where((markerpcd[0] >= -0.05)  & (markerpcd[0] <= bin_width) &
         #                  (markerpcd[1] <= -0.05) & (markerpcd[1] >= -bin_length) &
-        #                  (markerpcd[2] >= 0.19) & (markerpcd[2] <= bin_height) )
-
-        ##############################################
-        # Best 2
-        bin_width    =  0.28 #M real is 0.34 #0.22
-        bin_length   =  0.43 #M real is 0.44 #0.39
-        bin_height   =  0.6 #M real is 0.2 #0.175
-
-        condt = np.where((markerpcd[0] >= -0.075)  & (markerpcd[0] <= bin_width) &
-                         (markerpcd[1] <= -0.075) & (markerpcd[1] >= -bin_length) &
-                         (markerpcd[2] >= 0.185) & (markerpcd[2] <= bin_height) ) ## 0.19 is really good
+        #                  (markerpcd[2] >= 0.08) & (markerpcd[2] <= bin_height) ) ## 0.19 is really good
 
         xyz = xyz[condt]
 
@@ -408,6 +412,10 @@ class Segmentation:
 
     def non_parametric_surface_class(self, xyz, clusterlabels, neighbors):
 
+        ##### non_parametric_surface_classification useing the method outlined in
+        # visal perception and robotic manipulation 3d chapter 4.4
+
+        ### can be # OPTIMIZE: for loop into vector notation
         clusters = []
         cluster_idx = []
         cluster_mean = []
@@ -416,181 +424,116 @@ class Segmentation:
         principal_norals = []
         Cosine_Similarity_primitive = []
         shape_guess = []
+        shape_guess_eig = []
+        shape_guess_procent = []
         convexity_guess = []
+        convexity_guess_procent = []
         uni_conxeity = []
         surface_class = []
-
+        surface_class_eig = []
         labels_unq = np.unique(clusterlabels)
-        print(labels_unq,'labels_unq')
-        # print(clusterlabels,'clusterlabels')
-        # print(range(np.amax(clusterlabels)),'range')
 
+
+        ### loop to look at each cluter 1 by 1
         for i in range(np.amax(clusterlabels)+1):
 
             print(i,'i')
 
+            #get the index of the cluster that is being classified
             cluster_idx.append(np.where((clusterlabels == i)))
 
+            ## empty arrat for clusters
             clusters = []
 
+            ## extract cluster from pcd
             clusters.append(xyz[cluster_idx[i]])
 
-            # print(clusters,'clusters')
-
+            ## tree qurry over the current cluster
             tree = KDTree(np.squeeze(clusters))
             dist, ind = tree.query(np.squeeze(clusters), k = neighbors)
 
             clusters_ind = np.squeeze(clusters)[ind]
 
-            # print(clusters_ind,'clusters_ind')
-            # print(len(clusters_ind),'clusters_ind')
-            # print(len(clusters_ind[0]),'clusters_ind')
-
-            #print(clusters_ind,'clusters_ind')
-
-            # seg.surface_normal_estimation(xyz[cluster_idx[i]], 30, True)
-
+            ## multi processing of normals for current cluster
             cluster_normals = np.asarray(p.map(seg.normals,clusters_ind))
 
-            # print(len(cluster_normals),'cluster_normals')
+            ## calculate normal centroid
+            ni = np.mean(cluster_normals,axis = 0)
+            ni = ni/np.linalg.norm(ni)
 
-            ######### guassian image ###########
-            # seg.gaussian_image(cluster_normals)
-
-            #print(len(cluster_normals[:,0]),'cluster_normals')
-            # print(len(cluster_normals),'cluster_normals')
-            # print(len(cluster_normals[0]),'cluster_normals')
-
-            #compute the z axis and center of patches
-            ni = []
-            ni.append(np.mean(cluster_normals[:,0]))
-            ni.append(np.mean(cluster_normals[:,1]))
-            ni.append(np.mean(cluster_normals[:,2]))
-
-            print(ni,'ni')
-
-            z_hat = np.array([0,0,1])
-
-
-            #print(ni,'ni')
-            #print(len(ni),'ni')
+            ## initialize z axis
+            z_hat = np.array([0,0,-1])
 
             #compute the alignment transofrmation with the z axis
-            r_theta = np.degrees(np.arccos(np.dot(np.transpose(ni),z_hat)))
+            r_theta = np.arccos(np.dot(ni,z_hat))
             r_A = np.cross(ni,z_hat)
 
-            #print(r_A,'r')
-            #print(r_theta,'r_theta')
+            ## Rodrigues formulation for rmat
+            skew_w = np.array([[0,-r_A[2],r_A[1]],[r_A[2],0,-r_A[0]],[-r_A[1],r_A[0],0]])
 
-            en      = np.cos(r_theta) + np.exp2(r_A[0])*(1-np.cos(r_theta))
-            to      = r_A[0]*r_A[1]*(1-np.cos(r_theta)) - r_A[2]*np.sin(r_theta)
-            tre     = r_A[0]*r_A[2]*(1-np.cos(r_theta)) + r_A[1]*np.sin(r_theta)
-            fire    = r_A[1]*r_A[0]*(1-np.cos(r_theta)) + r_A[2]*np.sin(r_theta)
-            fem     = np.cos(r_theta) + np.exp2(r_A[0])*(1-np.cos(r_theta))
-            seks    = r_A[1]*r_A[2]*(1-np.cos(r_theta)) - r_A[0]*np.sin(r_theta)
-            syv     = r_A[2]*r_A[0]*(1-np.cos(r_theta)) - r_A[1]*np.sin(r_theta)
-            otte    = r_A[2]*r_A[1]*(1-np.cos(r_theta)) + r_A[0]*np.sin(r_theta)
-            ni      = np.cos(r_theta) + np.exp2(r_A[2])*(1-np.cos(r_theta))
+            r_mat = np.eye(3) + skew_w + (skew_w.dot(skew_w))/(1+np.cos(r_theta))
 
-            r_mat = np.array([[en, to, tre],
-                              [fire, fem, seks],
-                              [syv, otte, ni]])
-
-            #print(r_mat,'r_mat1')
-
+            ## normals of cluster aligned with z axis
             nj_alligned = np.dot(np.squeeze(r_mat),np.transpose(cluster_normals))
 
-            # print(np.shape(nj_alligned[0,:]),'nj_alligned1')
-            #print((nj_alligned),'nj_alligned2')
-            # print(len(nj_alligned[0]),'nj_alligned3')
+            ## compute aligend normal centroid
+            nja = np.mean(nj_alligned,axis = 1)
+            nja = nja/np.linalg.norm(nja)
 
-            nja = []
-            nja.append(np.mean(nj_alligned[0,:]))
-            nja.append(np.mean(nj_alligned[1,:]))
-            nja.append(np.mean(nj_alligned[2,:]))
+            print(nja,'nja')
 
-            #print(nja,'nja')
-            #plt.scatter(nj_alligned[0,:],nj_alligned[1,:])
-            #plt.show()
+            ## decompose the current cluster for better computation
+            decomp_cluster = np.transpose(nj_alligned)
+            neighbors_decomp = 150
 
-            #print(np.delete(nj_alligned,2,0),'size')
-            # print(np.shape(np.vstack(nj_alligned[0,:])),'xj')
-            # print(np.shape(np.vstack(nj_alligned[1,:])),'yj')
-            # print(np.dot(nj_alligned[0,:] , nj_alligned[1,:]),'dot')
-            # print(np.sum(nj_alligned[0,:] * nj_alligned[1,:]),'*')
-
-            decomp_cluster = np.squeeze(np.delete(nj_alligned,2,0))
-
-            decomp_cluster = np.transpose(np.asarray([decomp_cluster[0,:],decomp_cluster[1,:]]))
-
-            # print(decomp_cluster,'decomp_cluster')
-
-            neighbors_decomp = 225
-
-            if (len(decomp_cluster)< 225):
+            if (len(decomp_cluster) < neighbors_decomp):
                 neighbors_decomp = len(decomp_cluster)
 
-            #print(neighbors_decomp,'neighbors_decomp')
-
+            ## tree search to make smaller patches for robutsness of computation
             tree = KDTree(decomp_cluster)
-            dist, ind = tree.query(decomp_cluster, k = neighbors_decomp)
+            dist, ind = tree.query(np.squeeze(decomp_cluster), k = neighbors_decomp)
 
             decomp_cluster = np.asarray(decomp_cluster[ind])
 
-            # print(len(decomp_cluster[0][0]),'len')
-            # #print(decomp_cluster[0][:],'decomp_cluster')
-            # print(decomp_cluster,'decomp_cluster')
-
-
+            ## initialize variables for decomposed cluster loop
             cluster_concl = []
+            cluster_concl_eig = []
             Np = []
             ## 0.000056 5.6e-05
-            eth = 0.000071
+            ## 0.000071
+            ## v0.000033
+            eth = 0.000675
+            eth_eig = 0.025
             print(eth,'eth')
             unique = []
             counts = []
             mse_max_app = []
             mse_min_app = []
+            w_comp = []
             convex_guess = 0
             concave_guess = 0
             neither_guess = 0
             convex = 0
             concave = 0
+            np_eig = 0
+
+            mi = np.mean(clusters,axis = 1)
+            mi = mi/np.linalg.norm(mi)
 
 
-
-
-            # print(clusters,'clusters')
-            # print(clusters[0][:,0],'clusters')
-            #clusters0 = clusters[:,0]
-
-            mi = []
-            mi.append(np.mean((clusters[0][:,0])))
-            mi.append(np.mean((clusters[0][:,1])))
-            mi.append(np.mean((clusters[0][:,2])))
-
-            ni = []
-            ni.append(np.mean(cluster_normals[:,0]))
-            ni.append(np.mean(cluster_normals[:,1]))
-            ni.append(np.mean(cluster_normals[:,2]))
-
-
-            for j in range(len(decomp_cluster)):
+            for j in range(len(decomp_cluster[0])):
                 ############### Principal Curvatures ####################
 
                 decomp_cluster_temp = decomp_cluster[j][:]
-
-                # print(j,'j')
-                # print(decomp_cluster_temp[0][0],'decomp_cluster_temp')
-
                 m = np.sqrt(len(decomp_cluster_temp))
-                #print(m,'m')
 
+                ## quardratic solution
                 delta = np.exp2(np.sum(np.exp2(decomp_cluster_temp[0,:]) - \
                                        np.exp2(decomp_cluster_temp[1,:]))) + \
                                        4 * (np.exp2(np.sum( decomp_cluster_temp[0,:] * \
                                                            decomp_cluster_temp[1,:])))
 
+                ## compute max and min angle for quardratic solution
                 theta_max = np.arctan((np.sum(np.exp2(decomp_cluster_temp[1,:]) - \
                                                np.exp2(decomp_cluster_temp[0,:])) + \
                                                np.sqrt(delta)) /\
@@ -601,6 +544,7 @@ class Segmentation:
                                                np.sqrt(delta)) ,\
                                        (2 * np.sum(decomp_cluster_temp[0,:] * (decomp_cluster_temp[1,:]))))
 
+                ## max and min mean square error
                 mse_max = (1/np.exp2(m)) * \
                           np.sum(np.exp2( (decomp_cluster_temp[0,:] * np.cos(theta_max)) + \
                                           (decomp_cluster_temp[1,:] * np.sin(theta_max)) ))
@@ -609,18 +553,10 @@ class Segmentation:
                           np.sum(np.exp2( (decomp_cluster_temp[0,:] * np.cos(theta_min)) + \
                                           (decomp_cluster_temp[1,:] * np.sin(theta_min)) ))
 
-                # print(delta,'delta')
-                # print(np.sqrt(delta),'delta')
-                # print(theta_max,'theta_max')
-                # print(theta_min,'theta_min')
-                # print(mse_max,'mse_max')
-                # print(mse_min,'mse_min')
-
                 mse_max_app.append(mse_max)
                 mse_min_app.append(mse_min)
 
-
-                ####real
+                ## find number of non principal curvatures
                 if ((mse_max < eth) and (mse_min < eth)):
                     Np = 0
                 elif ((mse_max < eth) and (mse_min > eth)):
@@ -634,37 +570,32 @@ class Segmentation:
 
                 ############### convexity ####################
 
-                # ni # center normal
-                # cluster_normals # nj all cluster_normals
-                # clusters # mj all
+                ## dj is a vector pointing from the centorid normal to a surface element
+                dj = np.transpose(np.array(decomp_cluster[j])) - np.transpose(np.array(mi))
 
-                dj = np.array(clusters) - np.array(mi)
+                ## compute convexity of demcomp patch
+                convexity = np.dot( np.squeeze(np.cross(np.cross(cluster_normals[j],ni),np.transpose(dj))) ,np.vstack(ni))
 
-                # print(cluster_normals,'cluster_normals')
-                # print(ni,'ni')
-
-                # print(np.squeeze((np.cross(np.cross(cluster_normals,ni),dj))),'stack')
-                # print(np.vstack(ni),'ni')
-
-                convexity = np.dot( np.squeeze(np.vstack(np.cross(np.cross(cluster_normals,ni),dj))) ,np.vstack(ni))
-
-                # print(len(convexity),'convexity')
-
+                ## add convexity up for all normals in the patch
+                convex = 0
+                concave = 0
                 for k in range(len(convexity)):
 
                     if (convexity[k] >= 0):
                         convex += 1
                     else:
                         concave += 1
-
-                # print(convex,'convex')
-                # print(concave,'concave')
-
-                s = convex / concave
-
+                ## makeing sure s is not calculated by 0 division
+                if (convex == 0):
+                    s = concave
+                elif (concave == 0):
+                    s = convex
+                else:
+                    s = convex / concave
+                ## sth proposed in paper
                 sth = 1.5
 
-
+                ## convexity classified for decomposed patch
                 if (s>sth):
                     convex_guess += 1
                 elif (s<(1/sth)):
@@ -672,30 +603,71 @@ class Segmentation:
                 elif (((1/sth)<s) and (s<sth)):
                     neither_guess += 1
 
+                ############ eig Np est #####################
+
+                ## computing the normals for eig value metohd of decideing Np
+                ## find mean of demcomp patches
+                xm = np.squeeze(np.mean(decomp_cluster,axis = 0))
+                ## covmat of decompose patch
+                cov = (1/len(decomp_cluster))*( np.dot(np.transpose((decomp_cluster[j])-xm), (decomp_cluster[j] - xm)))
+
+                ## np eig fucntion
+                w,v = LA.eig(cov)
+
+                #sort normals
+                idx = w.argsort()
+                w = w[idx]
+
+                np_eig = 0
+
+                ## delete middel value from eig vaules
+                w = np.delete(w, 1)
+
+                ## count np
+                for k in range(len(w)):
+                    if (w[k] > eth_eig):
+                        np_eig += 1
+
+                cluster_concl_eig.append(np_eig)
+                ##############################################
+
+            ## printing information about results
             print(convex_guess,'convex_guess')
             print(concave_guess,'concave_guess')
             print(neither_guess,'neither_guess')
-            # print(mi,'mi')
-            # print(dj,'dj')
-            # print(convexity,'convexity')
+            print(np.mean(mse_max_app),'mse_max_app')
+            print(np.mean(mse_min_app),'mse_min_app')
 
-
-            # print(np.mean(mse_max_app),'mse_max_app')
-            # print(np.mean(mse_min_app),'mse_min_app')
-            # print(cluster_concl,'cluster_concl')
-
+            ## universal convexity
+            uni_conxeity = []
             uni_conxeity.append(convex_guess)
             uni_conxeity.append(concave_guess)
             uni_conxeity.append(neither_guess)
+
+            ## count np's and convexity of decomped patches
             unique_uni_conxeity, counts_uni_conxeity = np.unique(uni_conxeity, return_counts=True)
             unique, counts = np.unique(cluster_concl, return_counts=True)
+            unique_eig, counts_eig = np.unique(cluster_concl_eig, return_counts=True)
 
-            # print(unique,'unique')
-            # print(counts,'counts')
+            ## printing information about results
+            print(unique,'unique')
+            print(counts,'counts')
+            print(unique_eig,'unique_eig')
+            print(counts_eig,'counts_eig')
+            print(counts_uni_conxeity,'counts_uni_conxeity')
 
-            convexity_guess.append(np.array(unique[np.where(counts == np.amax(counts))]))
+            ## accturl guesses for current clusters
+            convexity_guess.append(uni_conxeity.index(np.amax(uni_conxeity)))
             shape_guess.append(np.array(unique[np.where(counts == np.amax(counts))]))
+            shape_guess_eig.append(np.array(unique_eig[np.where(counts_eig == np.amax(counts_eig))]))
 
+            ## procent confidence on current shape/ convexity guess
+            convexity_guess_procent.append(np.amax(uni_conxeity)/np.sum(uni_conxeity))
+            shape_guess_procent.append(np.amax(counts)/np.sum(counts))
+            shape_guess_procent.append(np.amax(counts_eig)/np.sum(counts_eig))
+
+            ################ classes ####################
+            ## table of how to understand surface_class information and surface_class_eig
             # plane   = 0
             # ridge   = 1
             # peak    = 2
@@ -703,30 +675,57 @@ class Segmentation:
             # pit     = 4
             # saddle  = 5
 
+            ## putting guess into results
             if ( (shape_guess[i] == 0) and (convexity_guess[i] == 0) ):
                 surface_class.append(0)
-            if ( (shape_guess[i] == 0) and (convexity_guess[i] == 1) ):
+            elif ( (shape_guess[i] == 0) and (convexity_guess[i] == 1) ):
                 surface_class.append(0)
-            if ( (shape_guess[i] == 0) and (convexity_guess[i] == 2) ):
+            elif ( (shape_guess[i] == 0) and (convexity_guess[i] == 2) ):
                 surface_class.append(0)
-            if ( (shape_guess[i] == 1) and (convexity_guess[i] == 0) ):
+            elif ( (shape_guess[i] == 1) and (convexity_guess[i] == 0) ):
                 surface_class.append(1)
-            if ( (shape_guess[i] == 1) and (convexity_guess[i] == 1) ):
+            elif ( (shape_guess[i] == 1) and (convexity_guess[i] == 1) ):
                 surface_class.append(3)
-            if ( (shape_guess[i] == 1) and (convexity_guess[i] == 2) ):
+            elif ( (shape_guess[i] == 1) and (convexity_guess[i] == 2) ):
                 surface_class.append(5)
-            if ( (shape_guess[i] == 2) and (convexity_guess[i] == 0) ):
+            elif ( (shape_guess[i] == 2) and (convexity_guess[i] == 0) ):
                 surface_class.append(2)
-            if ( (shape_guess[i] == 2) and (convexity_guess[i] == 1) ):
+            elif ( (shape_guess[i] == 2) and (convexity_guess[i] == 1) ):
                 surface_class.append(4)
-            if ( (shape_guess[i] == 2) and (convexity_guess[i] == 2) ):
+            elif ( (shape_guess[i] == 2) and (convexity_guess[i] == 2) ):
                 surface_class.append(5)
 
+            ## putting guess into results for eig method
+            if ( (shape_guess_eig[i] == 0) and (convexity_guess[i] == 0) ):
+                surface_class_eig.append(0)
+            elif ( (shape_guess_eig[i] == 0) and (convexity_guess[i] == 1) ):
+                surface_class_eig.append(0)
+            elif ( (shape_guess_eig[i] == 0) and (convexity_guess[i] == 2) ):
+                surface_class_eig.append(0)
+            elif ( (shape_guess_eig[i] == 1) and (convexity_guess[i] == 0) ):
+                surface_class_eig.append(1)
+            elif ( (shape_guess_eig[i] == 1) and (convexity_guess[i] == 1) ):
+                surface_class_eig.append(3)
+            elif ( (shape_guess_eig[i] == 1) and (convexity_guess[i] == 2) ):
+                surface_class_eig.append(5)
+            elif ( (shape_guess_eig[i] == 2) and (convexity_guess[i] == 0) ):
+                surface_class_eig.append(2)
+            elif ( (shape_guess_eig[i] == 2) and (convexity_guess[i] == 1) ):
+                surface_class_eig.append(4)
+            elif ( (shape_guess_eig[i] == 2) and (convexity_guess[i] == 2) ):
+                surface_class_eig.append(5)
 
 
+            ## printing final results and stats about the performance.
             print(np.squeeze(shape_guess),'shape_guess')
+            print(np.squeeze(shape_guess_eig),'shape_guess_eig')
             print(np.squeeze(convexity_guess),'convexity_guess')
+            print(np.squeeze(shape_guess_procent),'shape_guess_procent')
+            print(np.mean(np.squeeze(shape_guess_procent)),'shape_guess_procent_mean')
+            print(np.squeeze(convexity_guess_procent),'convexity_guess_procent')
+            print((np.mean(np.squeeze(convexity_guess_procent)) + np.mean(np.squeeze(shape_guess_procent)))/2,'mean mean')
             print(surface_class,'surface_class')
+            print(surface_class_eig,'surface_class_eig')
         return
 
 

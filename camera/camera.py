@@ -36,9 +36,9 @@ class Camera:
         self.camera_mat = np.array([[self.fx, 0, self.ppx], [0, self.fy, self.ppy], [0 ,0 ,1]], dtype=np.float)
         self.distCoeffs = np.zeros(4)
         self.colorizer = rs.colorizer(color_scheme = 2)
-    
+
     def stream(self, colored_depth = False):
-        
+
         frames = self.pipeline.wait_for_frames()
         frames = self.align.process(frames)
         depth_frame = frames.get_depth_frame()
@@ -53,7 +53,7 @@ class Camera:
 
         if colored_depth == True:
             self.depth_image = np.asanyarray(colored_depth_frame.get_data())
-        else: 
+        else:
             self.depth_image = np.asanyarray(depth_frame.get_data())
 
         return self.color_image, self.depth_image
