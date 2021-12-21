@@ -17,6 +17,17 @@ from scipy.optimize import least_squares
 import math
 from scipy import spatial
 
+def sphere_mini_LM(rc0, clusters,length_normals):
+
+    # print(rc0,'rc0')
+    # print(clusters,'clusters')
+    # print(length_normals,'length_normals')
+
+    c0 = np.array([[rc0[0]],[rc0[1]],[rc0[2]]])
+    # print(c0,'c0')
+
+    return (1/length_normals)*np.sum(np.exp2(LA.norm(clusters - c0[0])-rc0[3]))
+
 class Segmentation:
 
     def filter_neighbors(self, xyz, neighbors):
@@ -257,7 +268,7 @@ class Segmentation:
             ax.set_xlabel('X Label')
             ax.set_ylabel('Y Label')
             ax.set_zlabel('Z Label')
-            legend1 = ax.legend(*scatter.legend_elements(num=len(labels_unq)-1), loc="upper left", title="Ranking")
+            legend1 = ax.legend(scatter.legend_elements(num=len(labels_unq)), loc="upper left", title="Ranking")
             ax.add_artist(legend1)
             plt.show()
 
@@ -353,62 +364,6 @@ class Segmentation:
             cv2.waitKey(1)
 
         return xyz
-
-    def surface_estimation(self, xyz, clusterlabels, neighbors):
-
-        clusters = []
-        cluster_idx = []
-        cov_mat = []
-        d = []
-
-        for i in range(np.amax(clusterlabels)+1):
-
-            cluster_idx.append(np.where((clusterlabels == i)))
-
-            clusters.append(xyz[cluster_idx[i]])
-
-
-            cluster_mean = np.mean(clusters[i])
-
-            ###########################################################
-            #plane
-            cov_mat.append( (1/len(clusters[i])) *
-                           (np.dot(np.transpose(clusters[i] - cluster_mean),
-                                                (clusters[i] - cluster_mean))))
-
-            #print(cov_mat,'cov_mat')
-
-            normals = np.asarray(p.map(seg.normals,cov_mat))
-
-            #d = distance to origin calculated from the mean position
-            d.append(np.dot( -normals, cluster_mean))
-
-
-            #plane error missing
-
-
-            ###########################################################
-            #sphere
-
-            #print(np.asarray([clusters[i]]),'clusters')
-
-            normals = np.asarray(p.map(seg.normals,np.asarray([clusters[i]])))
-            #normals = p.map(seg.normals,clusters[i])
-
-            print(normals,'normals')
-
-
-            r0 = -(np.dot(normals[i], np.dot(np.transpose( np.sum(clusters[i]),np.sum(normals[i])))))
-            print(r0,'r0')
-
-            r0 = -(np.dot(normals[i],np.sum(np.dot(np.transpose(clusters[i]),normals[i])))) \
-                   - np.dot(np.sum(np.transpose(clusters[i])),np.sum(normals[i])) \
-                    /(np.dot(np.sum(np.dot(np.transpose(normals[i]),normals[i])))) \
-                    - (np.sum(np.dot(np.sum(np.transpose(normals[i])),np.sum(normals[i]))))
-
-            print(r0,'r0')
-
-        return
 
     def non_parametric_surface_class(self, xyz, clusterlabels, neighbors):
 
@@ -675,6 +630,8 @@ class Segmentation:
             # pit     = 4
             # saddle  = 5
 
+            print(np.squeeze(shape_guess),'shape_guess')
+
             ## putting guess into results
             if ( (shape_guess[i] == 0) and (convexity_guess[i] == 0) ):
                 surface_class.append(0)
@@ -727,6 +684,176 @@ class Segmentation:
             print(surface_class,'surface_class')
             print(surface_class_eig,'surface_class_eig')
         return
+
+    def surface_estimation(self, xyz, clusterlabels, neighbors):
+
+        clusters = []
+        cluster_idx = []
+        cov_mat = []
+        d = []
+
+        ### loop to look at each cluter 1 by 1
+        for i in range(np.amax(clusterlabels)+1):
+
+            print(i,'i')
+
+            #get the index of the cluster that is being classified
+            cluster_idx.append(np.where((clusterlabels == i)))
+
+            ## empty arrat for clusters
+            clusters = []
+
+            ## extract cluster from pcd
+            clusters.append(xyz[cluster_idx[i]])
+
+            ## tree qurry over the current cluster
+            tree = KDTree(np.squeeze(clusters))
+            dist, ind = tree.query(np.squeeze(clusters), k = neighbors)
+
+            clusters_ind = np.squeeze(clusters)[ind]
+
+            ## multi processing of normals for current cluster
+            cluster_normals = np.asarray(p.map(seg.normals,clusters_ind))
+
+
+            cluster_mean = (np.mean(clusters,axis = 1))
+
+            ###########################################################
+            #plane
+
+            cov_mat = []
+            cov_mat.append( (1/len(clusters)) *
+                           (np.dot(( np.squeeze(clusters) - cluster_mean),
+                                    np.transpose( np.squeeze(clusters) - cluster_mean))))
+
+            cov_mat_normals = np.asarray(p.map(seg.normals,cov_mat))
+
+
+            #d = distance to origin calculated from the mean position
+            d.append( -np.transpose(cov_mat_normals) * cluster_mean)
+
+
+            #plane error missing
+
+
+            ###########################################################
+            #sphere
+
+            #print(np.asarray([clusters[i]]),'clusters')
+
+            # normals = np.asarray(p.map(seg.normals,np.asarray([clusters[i]])))
+
+            # print(normals,'normals')
+
+            # print(np.shape(normals),'normals')
+            #
+            # print(np.shape(clusters),'clusters')
+
+            #
+            # r0 = -(np.dot(normals, np.transpose(np.sum(clusters)) * np.sum(normals)))
+            # print(r0,'r0')
+            # r0 = -np.dot((np.transpose(np.sum(clusters))),np.sum(normals))
+            # print(r0,'r0')
+            # r0 = np.dot(normals,(np.sum(np.dot(np.transpose(normals),normals))))
+            # print(r0,'r0')
+            # r0 =-(np.dot(np.sum(np.transpose(normals)),np.sum(normals)))
+            # print(r0,'r0')
+
+            r0 = -(np.dot(len(cluster_normals), np.transpose(np.sum(clusters)) * np.sum(cluster_normals)) \
+                   - np.dot((np.transpose(np.sum(clusters))),np.sum(cluster_normals))) \
+                    /np.dot(len(cluster_normals),(np.sum(np.dot(np.transpose(cluster_normals),cluster_normals))) \
+                    -(np.dot(np.sum(np.transpose(cluster_normals)),np.sum(cluster_normals))))
+
+            print(r0,'r0')
+
+            # print(np.sum(cluster_normals,axis = 0),'sumclsuters')
+            # print(np.sum(clusters,axis = 1),'sumclsuters')
+            # print(np.sum(np.dot(r0,cluster_normals)+(cluster_normals),axis = 0),'dot')
+
+            c0 = (1/len(cluster_normals))*(np.sum(np.dot(r0,cluster_normals)+(cluster_normals),axis = 0))
+
+            print(c0,'c0')
+
+            x0 = np.array([c0[0], c0[1], c0[2], np.absolute(r0)])
+
+            print(x0,'x0')
+
+            res_lsq_lm = least_squares(sphere_mini_LM, x0 , args = (clusters, len(cluster_normals)),method='trf')
+
+            print(res_lsq_lm,'res_lsq_lm')
+
+            print(res_lsq_lm.x[3],'res_lsq_lm shape')
+
+            mesh = o3d.geometry.TriangleMesh.create_sphere(radius = res_lsq_lm.x[3]/100)
+
+            ###########################################################
+            #Cylinders
+
+            ## calculate normal centroid
+            nbar = np.sum(cluster_normals,axis = 0)
+            nbar = nbar/np.linalg.norm(nbar)
+
+            print(nbar,'nbar')
+
+            ## initialize z axis
+            z_hat = np.array([0,0,-1])
+
+            #compute the alignment transofrmation with the z axis
+            r_theta = np.arccos(np.dot(nbar,z_hat))
+            r_A = np.cross(nbar,z_hat)
+
+            ## Rodrigues formulation for rmat
+            skew_w = np.array([[0,-r_A[2],r_A[1]],[r_A[2],0,-r_A[0]],[-r_A[1],r_A[0],0]])
+
+            r_mat = np.eye(3) + skew_w + (skew_w.dot(skew_w))/(1+np.cos(r_theta))
+
+            ## normals of cluster aligned with z axis
+            nj_alligned = np.dot(np.squeeze(r_mat),np.transpose(cluster_normals))
+
+            ## compute aligend normal centroid
+            nja = np.mean(nj_alligned,axis = 1)
+            nja = nja/np.linalg.norm(nja)
+
+            print(nja,'nja')
+
+            ## decompose the current cluster for better computation
+            decomp_cluster = np.transpose(nj_alligned)
+
+            m = np.sqrt(len(decomp_cluster))
+
+            delta = np.exp2(np.sum(np.exp2(decomp_cluster[0,:]) - \
+                                   np.exp2(decomp_cluster[1,:]))) + \
+                                   4 * (np.exp2(np.sum( decomp_cluster[0,:] * \
+                                                       decomp_cluster[1,:])))
+
+            ## compute max and min angle for quardratic solution
+            theta_min = np.arctan2((np.sum(np.exp2(decomp_cluster[1,:]) -\
+                                           np.exp2(decomp_cluster[0,:])) - \
+                                           np.sqrt(delta)) ,\
+                                   (2 * np.sum(decomp_cluster[0,:] * (decomp_cluster[1,:]))))
+            print(theta_min,'theta_min')
+
+            a_min = np.array([[np.cos(theta_min)],[np.sin(theta_min)],[0]])
+
+            print(a_min,'a_min')
+
+            ## Rodrigues formulation for rmat
+            skew_w = np.array([[0,-r_A[2],r_A[1]],[r_A[2],0,-r_A[0]],[-r_A[1],r_A[0],0]])
+
+            ## for inverse rodrigues take the inverse of the matrix ez
+            r_mat = np.eye(3) + skew_w + (skew_w.dot(skew_w))/(1+np.cos(r_theta))
+
+
+
+
+            ## inital radius guess
+            r0 = -(np.dot(len(cluster_normals), np.transpose(np.sum(clusters)) * np.sum(cluster_normals)) \
+                   - np.dot((np.transpose(np.sum(clusters))),np.sum(cluster_normals))) \
+                    /np.dot(len(cluster_normals),(np.sum(np.dot(np.transpose(cluster_normals),cluster_normals))) \
+                    -(np.dot(np.sum(np.transpose(cluster_normals)),np.sum(cluster_normals))))
+
+        return mesh
+
 
 
 
@@ -785,10 +912,10 @@ if __name__ == '__main__':
         #### first prediction of shape #####
         seg.non_parametric_surface_class(binxyz, labels, neighbors)
 
-        seg.segmentate(crxyz,normals,visualize_db_clusters)
+        # seg.segmentate(crxyz,normals,visualize_db_clusters)
 
         ########### not in use yet ###########
-        #seg.surface_estimation(binxyz, labels, neighbors)
+        mesh = seg.surface_estimation(binxyz, labels, neighbors)
 
         #visualize the pcd
         pcd.points = o3d.utility.Vector3dVector(crxyz)
@@ -805,9 +932,10 @@ if __name__ == '__main__':
         #cv2.waitKey(1)
 
         ## visualize point cloud caculated from the depth image
-        if added == True:
-            vis.add_geometry(pcd)
-            added = False
-        vis.update_geometry(pcd)
+        # if added == True:
+        #     vis.add_geometry(pcd)
+        #     added = False
+        #vis.update_geometry(pcd)
+        o3d.visualization.draw_geometries([pcd,mesh])
         vis.poll_events()
         vis.update_renderer()
