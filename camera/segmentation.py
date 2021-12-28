@@ -17,16 +17,16 @@ from scipy.optimize import least_squares
 import math
 from scipy import spatial
 
-def sphere_mini_LM(rc0, clusters,length_normals):
+def sphere_mini_LM(rc0, clusters):
 
     # print(rc0,'rc0')
     # print(clusters,'clusters')
     # print(length_normals,'length_normals')
-
-    c0 = np.array([[rc0[0]],[rc0[1]],[rc0[2]]])
+    length_normals = len(clusters)
+    c0 = np.array([rc0[0],rc0[1],rc0[2]])
     # print(c0,'c0')
 
-    return (1/length_normals)*np.sum(np.exp2(LA.norm(clusters - c0[0])-rc0[3]))
+    return (1/length_normals)*np.sum(np.exp2(LA.norm(np.squeeze(clusters) - c0)-rc0[3]))
 
 class Segmentation:
 
@@ -231,7 +231,7 @@ class Segmentation:
 
             Cosine_Similarity[i] = np.dot(anorm, bnorm)
 
-            temp_index = np.where(Cosine_Similarity[i] > 0.80) ## 0.75 is good
+            temp_index = np.where(Cosine_Similarity[i] > 0.65) ## 0.75 is good
 
             #keep points that does not span a crease
             if len(temp_index[0]) >  29:
@@ -759,32 +759,49 @@ class Segmentation:
             # r0 =-(np.dot(np.sum(np.transpose(normals)),np.sum(normals)))
             # print(r0,'r0')
 
-            r0 = -(np.dot(len(cluster_normals), np.transpose(np.sum(clusters)) * np.sum(cluster_normals)) \
-                   - np.dot((np.transpose(np.sum(clusters))),np.sum(cluster_normals))) \
-                    /np.dot(len(cluster_normals),(np.sum(np.dot(np.transpose(cluster_normals),cluster_normals))) \
+            print(np.squeeze(clusters),'clusters squeeze')
+
+            r0 = (np.dot(len(cluster_normals),(np.sum(np.dot(np.transpose(cluster_normals),cluster_normals)))) \
+                    -(np.dot(np.sum(np.transpose(cluster_normals)),np.sum(cluster_normals))))
+            print(r0,'r0')
+            r0 = -(np.dot(len(cluster_normals), np.sum(np.dot(np.transpose(np.squeeze(clusters)) , cluster_normals))) \
+                   - np.dot((np.sum(np.transpose(clusters))),np.sum(cluster_normals)))
+
+            print(r0,'r0')
+
+            r0 = -(np.dot(len(cluster_normals), np.sum(np.dot(np.transpose(np.squeeze(clusters)) , cluster_normals))) \
+                  - np.dot((np.sum(np.transpose(clusters))),np.sum(cluster_normals))) \
+                    /((len(cluster_normals)*(np.sum(np.dot(np.transpose(cluster_normals),cluster_normals)))) \
                     -(np.dot(np.sum(np.transpose(cluster_normals)),np.sum(cluster_normals))))
 
             print(r0,'r0')
+
 
             # print(np.sum(cluster_normals,axis = 0),'sumclsuters')
             # print(np.sum(clusters,axis = 1),'sumclsuters')
             # print(np.sum(np.dot(r0,cluster_normals)+(cluster_normals),axis = 0),'dot')
 
-            c0 = (1/len(cluster_normals))*(np.sum(np.dot(r0,cluster_normals)+(cluster_normals),axis = 0))
+            print(1/len(cluster_normals),'(1/len(cluster_normals)')
+
+            c0 = np.squeeze((1/len(cluster_normals))*(np.sum(np.dot(r0,cluster_normals)+(clusters),axis = 1)))
 
             print(c0,'c0')
 
-            x0 = np.array([c0[0], c0[1], c0[2], np.absolute(r0)])
+            x0 = np.array([c0[0], c0[1], c0[2], LA.norm(r0)])
 
             print(x0,'x0')
 
-            res_lsq_lm = least_squares(sphere_mini_LM, x0 , args = (clusters, len(cluster_normals)),method='trf')
+            res_lsq_lm = least_squares(sphere_mini_LM, x0 , args = clusters, method = 'lm' )
 
             print(res_lsq_lm,'res_lsq_lm')
 
             print(res_lsq_lm.x[3],'res_lsq_lm shape')
 
-            mesh = o3d.geometry.TriangleMesh.create_sphere(radius = res_lsq_lm.x[3]/100)
+            print(x0,'x0')
+
+            mesh = o3d.geometry.TriangleMesh.create_sphere(radius = 0.05/2)
+
+            center = np.array([res_lsq_lm.x[0],res_lsq_lm.x[1],res_lsq_lm.x[2]])
 
             ###########################################################
             #Cylinders
@@ -852,7 +869,7 @@ class Segmentation:
                     /np.dot(len(cluster_normals),(np.sum(np.dot(np.transpose(cluster_normals),cluster_normals))) \
                     -(np.dot(np.sum(np.transpose(cluster_normals)),np.sum(cluster_normals))))
 
-        return mesh
+        return mesh, center
 
 
 
@@ -915,14 +932,14 @@ if __name__ == '__main__':
         # seg.segmentate(crxyz,normals,visualize_db_clusters)
 
         ########### not in use yet ###########
-        mesh = seg.surface_estimation(binxyz, labels, neighbors)
+        mesh, center = seg.surface_estimation(binxyz, labels, neighbors)
 
         #visualize the pcd
         pcd.points = o3d.utility.Vector3dVector(crxyz)
 
         #Transfor viewpoint to look form the camera perspective
-        pcd.transform([[1,0,0,0],[0,-1,0,0],[0,0,-1,0],[0,0,0,1]])
-
+        # pcd.transform([[1,0,0,0],[0,-1,0,0],[0,0,-1,0],[0,0,0,1]])
+        # mesh.transform([[1,0,0,0],[0,-1,0,0],[0,0,-1,0],[0,0,0,1]])
         #visualize the depth_img with color/gray scale
         #rgb_img, depth_img = cam.stream(colored_depth=True)
 
@@ -931,11 +948,25 @@ if __name__ == '__main__':
         #cv2.imshow("depth", depth_img)
         #cv2.waitKey(1)
 
+        print(f'Center of mesh: {mesh.get_center()}')
+        print(center,'center')
+
+        print(f'Center of pcd: {pcd.get_center()}')
+
+        center2 = mesh.get_center() - pcd.get_center()
+
+        # mesh1 = mesh.translate((-center2[0],-center2[1],-center2[2]))
+        mesh1 = mesh.translate((center[0],center[1],center[2]))
+
+        print(f'Center of mesh1: {mesh1.get_center()}')
+
+        print(f'Center of mesh: {mesh.get_center()}')
+
         ## visualize point cloud caculated from the depth image
-        # if added == True:
-        #     vis.add_geometry(pcd)
-        #     added = False
-        #vis.update_geometry(pcd)
-        o3d.visualization.draw_geometries([pcd,mesh])
+        if added == True:
+            vis.add_geometry(pcd)
+            added = False
+        vis.update_geometry(pcd)
+        o3d.visualization.draw_geometries([pcd,mesh1])
         vis.poll_events()
         vis.update_renderer()
