@@ -691,8 +691,8 @@ class Segmentation:
 
     def surface_estimation(self, xyz, clusterlabels, neighbors):
 
-        np.savetxt('camera/pcddata', xyz)
-        np.savetxt('camera/clusterlabels', clusterlabels)
+        # np.savetxt('camera/pcddata', xyz)
+        # np.savetxt('camera/clusterlabels', clusterlabels)
 
         clusters = []
         cluster_idx = []
@@ -722,7 +722,8 @@ class Segmentation:
             ## multi processing of normals for current cluster
             cluster_normals = np.asarray(p.map(seg.normals,clusters_ind))
 
-            np.savetxt('camera/cluster_normals', cluster_normals)
+            # save cluster_normals
+            # np.savetxt('camera/cluster_normals', cluster_normals)
 
 
             cluster_mean = (np.mean(clusters,axis = 1))
