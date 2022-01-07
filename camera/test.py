@@ -1,24 +1,39 @@
 import numpy as np
-from scipy.optimize import least_squares
-
-# def sphere_mini_LM(x, length_normals, ehh):
-#     print(x,'x')
-#     print(length_normals,'e\length_normals')
-#     print(ehh,'ehh')
-#     return (1/length_normals[0])*np.exp2(np.abs(np.abs(x[0]-x[1])+length_normals[1]))
-#
-# length_normals = np.array([[200,300],[300,200]])
-#
-# x0 = np.array([2,3])
-#
-# res_lsq_lm = least_squares(sphere_mini_LM, x0 , args = (length_normals))
-#
-#
-# print(res_lsq_lm,'res_lsq_lm')
+from sympy import *
+from sympy.vector import *
+from numpy import linalg as LA
+from sympy.interactive.printing import init_printing
+init_printing(use_unicode=False, wrap_line=False)
+from sympy.matrices import Matrix, eye, zeros, ones, diag, GramSchmidt
 
 
-a = np.ones([673,3])
+a = np.asarray([1,2,3])
 
-b = np.ones([3,1])
+b = np.asarray([[1,2,3],[1,2,3],[1,2,3],[1,2,3]])
+print(a)
+print(a-b)
 
-print(a-np.transpose(b),'dot')
+r,x,y,z = symbols('r,x,y,z')
+
+c = Matrix([ x**2 , y**3 ,  z**4])
+
+mi = np.array([[1,2,3],[1,2,3],[1,2,3],[1,2,3]])
+
+# mi = np.array([1,2,3])
+
+c = Matrix([1,2,3])
+
+m = Matrix(mi)
+
+print(m,'m')
+print(c,'c')
+
+
+print(c.T-m)
+
+# fx = (mi - c).dot(mi - c) - r
+#
+# print(diff(fx, x))
+#
+#
+# print(np.dot(np.array([1,1,1]),np.array([1,1,1])))

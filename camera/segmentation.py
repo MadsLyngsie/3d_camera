@@ -16,6 +16,11 @@ from camera import Camera
 from scipy.optimize import least_squares
 import math
 from scipy import spatial
+from scipy.optimize import curve_fit
+from sympy import *
+from sympy.vector import *
+
+N = CoordSys3D('N')
 
 def sphere_mini_LM(rc0, clusters):
 
@@ -25,7 +30,6 @@ def sphere_mini_LM(rc0, clusters):
     length_normals = len(clusters)
     c0 = np.array([rc0[0],rc0[1],rc0[2]])
     # print(c0,'c0')
-
     return (1/length_normals)*np.sum(np.exp2(LA.norm(np.squeeze(clusters) - c0)-rc0[3]))
 
 class Segmentation:
@@ -687,6 +691,9 @@ class Segmentation:
 
     def surface_estimation(self, xyz, clusterlabels, neighbors):
 
+        np.savetxt('camera/pcddata', xyz)
+        np.savetxt('camera/clusterlabels', clusterlabels)
+
         clusters = []
         cluster_idx = []
         cov_mat = []
@@ -714,6 +721,8 @@ class Segmentation:
 
             ## multi processing of normals for current cluster
             cluster_normals = np.asarray(p.map(seg.normals,clusters_ind))
+
+            np.savetxt('camera/cluster_normals', cluster_normals)
 
 
             cluster_mean = (np.mean(clusters,axis = 1))
@@ -759,15 +768,15 @@ class Segmentation:
             # r0 =-(np.dot(np.sum(np.transpose(normals)),np.sum(normals)))
             # print(r0,'r0')
 
-            print(np.squeeze(clusters),'clusters squeeze')
+            # print(np.squeeze(clusters),'clusters squeeze')
 
-            r0 = (np.dot(len(cluster_normals),(np.sum(np.dot(np.transpose(cluster_normals),cluster_normals)))) \
-                    -(np.dot(np.sum(np.transpose(cluster_normals)),np.sum(cluster_normals))))
-            print(r0,'r0')
-            r0 = -(np.dot(len(cluster_normals), np.sum(np.dot(np.transpose(np.squeeze(clusters)) , cluster_normals))) \
-                   - np.dot((np.sum(np.transpose(clusters))),np.sum(cluster_normals)))
-
-            print(r0,'r0')
+            # r0 = (np.dot(len(cluster_normals),(np.sum(np.dot(np.transpose(cluster_normals),cluster_normals)))) \
+            #         -(np.dot(np.sum(np.transpose(cluster_normals)),np.sum(cluster_normals))))
+            # print(r0,'r0')
+            # r0 = -(np.dot(len(cluster_normals), np.sum(np.dot(np.transpose(np.squeeze(clusters)) , cluster_normals))) \
+            #        - np.dot((np.sum(np.transpose(clusters))),np.sum(cluster_normals)))
+            #
+            # print(r0,'r0')
 
             r0 = -(np.dot(len(cluster_normals), np.sum(np.dot(np.transpose(np.squeeze(clusters)) , cluster_normals))) \
                   - np.dot((np.sum(np.transpose(clusters))),np.sum(cluster_normals))) \
@@ -776,12 +785,11 @@ class Segmentation:
 
             print(r0,'r0')
 
-
             # print(np.sum(cluster_normals,axis = 0),'sumclsuters')
             # print(np.sum(clusters,axis = 1),'sumclsuters')
             # print(np.sum(np.dot(r0,cluster_normals)+(cluster_normals),axis = 0),'dot')
 
-            print(1/len(cluster_normals),'(1/len(cluster_normals)')
+            # print(1/len(cluster_normals),'(1/len(cluster_normals)')
 
             c0 = np.squeeze((1/len(cluster_normals))*(np.sum(np.dot(r0,cluster_normals)+(clusters),axis = 1)))
 
@@ -791,18 +799,60 @@ class Segmentation:
 
             print(x0,'x0')
 
-            res_lsq_lm = least_squares(sphere_mini_LM, x0 , args = clusters, method = 'lm' )
+            # decision_variabels =
+            length_normals = len(cluster_normals)
 
-            print(res_lsq_lm,'res_lsq_lm')
 
-            print(res_lsq_lm.x[3],'res_lsq_lm shape')
+            f0 = (1/length_normals)*np.sum(np.exp2(LA.norm(np.squeeze(clusters) - c0)- r0))
 
-            print(x0,'x0')
+            cx = symbols('cx')
+            d_cx = np.array([cx, c0[1], c0[2]])
+            fcx = (LA.norm(np.squeeze(clusters) - c0) - r0)
 
-            mesh = o3d.geometry.TriangleMesh.create_sphere(radius = 0.05/2)
+            fdcx = diff(fcx,cx)
 
-            center = np.array([res_lsq_lm.x[0],res_lsq_lm.x[1],res_lsq_lm.x[2]])
 
+            cy = symbols('cy')
+            d_cy = np.array([c0[0], cy, c0[2]])
+            fcy = (LA.norm(np.squeeze(clusters) - c0)- r0)
+
+            fdcy = diff(fcy,cy)
+
+
+            cz = symbols('cz')
+            d_cz = np.array([c0[0], c0[1], cz])
+            fcz = (LA.norm(np.squeeze(clusters) - c0) - r0)
+
+            fdcz = diff(fcz,cz)
+
+
+            # syms_radius = symbols('diff_radius')
+            # d_r = np.array([c0[0], c0[1], c0[2]])
+            # fradius = (1/length_normals)*np.sum(np.exp2(LA.norm(np.squeeze(clusters) - c0)- syms_radius))
+            #
+            # fdcx = diff(fradius,syms_radius)
+
+            jacobian_sphere = np.array([fdcx, fdcy, fdcz])
+
+            print(jacobian_sphere,'jacobian_sphere')
+
+            exit()
+
+            # res_lsq_lm  = least_squares(sphere_mini_LM, x0 , args = clusters )
+            #
+            # # res_lsq_lm, what = curve_fit(sphere_mini_LM, x0 , clusters)
+            #
+            # print(res_lsq_lm,'res_lsq_lm')
+            #
+            # print(res_lsq_lm.x[3],'res_lsq_lm shape')
+            #
+            # print(x0,'x0')
+            #
+            # mesh = o3d.geometry.TriangleMesh.create_sphere(radius = r0)
+            #
+            # center = np.array([res_lsq_lm.x[0],res_lsq_lm.x[1],res_lsq_lm.x[2]])
+            mesh = 0
+            center = 0
             ###########################################################
             #Cylinders
 
@@ -948,25 +998,28 @@ if __name__ == '__main__':
         #cv2.imshow("depth", depth_img)
         #cv2.waitKey(1)
 
-        print(f'Center of mesh: {mesh.get_center()}')
-        print(center,'center')
-
-        print(f'Center of pcd: {pcd.get_center()}')
-
-        center2 = mesh.get_center() - pcd.get_center()
-
-        # mesh1 = mesh.translate((-center2[0],-center2[1],-center2[2]))
-        mesh1 = mesh.translate((center[0],center[1],center[2]))
-
-        print(f'Center of mesh1: {mesh1.get_center()}')
-
-        print(f'Center of mesh: {mesh.get_center()}')
+        # check sphere center
+        # print(f'Center of mesh: {mesh.get_center()}')
+        # print(center,'center')
+        #
+        # pcdcenter = pcd.get_center()
+        #
+        # print(f'Center of pcd: {pcd.get_center()}')
+        #
+        # center2 = mesh.get_center() - pcd.get_center()
+        #
+        # # mesh1 = mesh.translate((-center2[0],-center2[1],-center2[2]))
+        # mesh1 = mesh.translate((center[0],center[1],center[2]))
+        #
+        # print(f'Center of mesh1: {mesh1.get_center()}')
+        #
+        # print(f'Center of mesh: {mesh.get_center()}')
 
         ## visualize point cloud caculated from the depth image
         if added == True:
             vis.add_geometry(pcd)
             added = False
         vis.update_geometry(pcd)
-        o3d.visualization.draw_geometries([pcd,mesh1])
+        # o3d.visualization.draw_geometries([pcd,mesh1])
         vis.poll_events()
         vis.update_renderer()
