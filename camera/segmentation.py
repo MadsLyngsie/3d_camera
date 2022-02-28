@@ -18,13 +18,10 @@ import math
 from scipy import spatial
 from scipy.optimize import curve_fit
 from sympy import *
-from sympy.vector import *
 import functools
 from multiprocessing.pool import ThreadPool
+from numpy.linalg import inv
 
-
-
-N = CoordSys3D('N')
 
 def sphere_mini_LM(rc0, clusters):
 
@@ -41,6 +38,19 @@ class Segmentation:
     def __init__(self):
         self.ThreadPool = ThreadPool(processes = 100)
         self.len = 0
+        self.mix = 0
+        self.miy = 0
+        self.miz = 0
+        self.cxc = 0
+        self.cyc = 0
+        self.czc = 0
+        self.rc = 0
+        self.jacobian_sphere_input_vector = 0
+        self.deriv_cx = 0
+        self.deriv_cy = 0
+        self.deriv_cz = 0
+        self.deriv_r  = 0
+
 
     def filter_neighbors(self, xyz, neighbors):
         #neighbors filtering
@@ -697,51 +707,72 @@ class Segmentation:
             print(surface_class_eig,'surface_class_eig')
         return
 
-    def jacobian_sphere(self,mix,miy,miz,cx,cy,cz,r):
+    def jacobian_sphere(self,cx,cy,cz,r):
 
-        cxs = symbols('cxs')
-        fcx = (1/self.len)*(sqrt((mix - cxs)**2 - (miy - cy)**2 - (miz - cz)**2) - r)**2
+        mixs,miys,mizs,cxs,cys,czs,rs = symbols('mixs,miys,mizs,cxs,cys,czs,rs')
 
-        fdcx = diff(fcx,cxs)
+        fdcx = lambdify([mixs,miys,mizs,cxs,cys,czs,rs],self.deriv_cx)
+        fdcx = fdcx(self.mix,self.miy,self.miz,cx,cy,cz,r)
 
-        cys = symbols('cys')
-        fcy = (1/self.len)*(sqrt((mix - cx)**2 - (miy - cys)**2 - (miz - cz)**2) - r)**2
+        mixs,miys,mizs,cxs,cys,czs,rs = symbols('mixs,miys,mizs,cxs,cys,czs,rs')
 
-        fdcy = diff(fcy,cys)
+        fdcy = lambdify([mixs,miys,mizs,cxs,cys,czs,rs],self.deriv_cy)
+        fdcy = fdcy(self.mix,self.miy,self.miz,cx,cy,cz,r)
 
-        czs = symbols('czs')
-        fcz = (1/self.len)*(sqrt((mix - cx)**2 - (miy - cy)**2 - (miz - czs)**2) - r)**2
+        mixs,miys,mizs,cxs,cys,czs,rs = symbols('mixs,miys,mizs,cxs,cys,czs,rs')
 
-        fdcz = diff(fcz,czs)
+        fdcz = lambdify([mixs,miys,mizs,cxs,cys,czs,rs],self.deriv_cz)
+        fdcz = fdcz(self.mix,self.miy,self.miz,cx,cy,cz,r)
 
-        rs = symbols('rs')
-        fradius = (1/self.len)*(sqrt((mix - cx)**2 - (miy - cy)**2 - (miz - cz)**2) - rs)**2
+        mixs,miys,mizs,cxs,cys,czs,rs = symbols('mixs,miys,mizs,cxs,cys,czs,rs')
 
-        fdradius = diff(fradius,rs)
-        jacobian_sphere = np.array([fdcx, fdcy, fdcz, fdradius])
+        fdradius = lambdify([mixs,miys,mizs,cxs,cys,czs,rs],self.deriv_r)
+        fdradius = fdradius(self.mix,self.miy,self.miz,cx,cy,cz,r)
+
+        jacobian_sphere = [fdcx, fdcy, fdcz, fdradius]
 
         return jacobian_sphere
 
     def compute_jacobian_sphere(self, input_vector):
 
+        # input_vector = np.loadtxt('camera/jac_input_vector')
+
+        # input_vector = self.jacobian_sphere_input_vector
+
         self.len = len(input_vector)
 
-        mix = input_vector[0]
-        miy = input_vector[1]
-        miz = input_vector[2]
-        cx = input_vector[3]
-        cy = input_vector[4]
-        cz = input_vector[5]
-        r = input_vector[6]
+        # if self.mix == 0:
+        #     print(self.len,'self.len = len(input_vector)')
+        #     print(np.shape(input_vector),'input_vector jac sphere func')
 
+        self.mix = input_vector[0]
+        self.miy = input_vector[1]
+        self.miz = input_vector[2]
+        cx  = input_vector[3]
+        cy  = input_vector[4]
+        cz  = input_vector[5]
+        r   = input_vector[6]
 
-        jacobian = self.jacobian_sphere(mix,miy,miz,cx,cy,cz,r)
+        jacobian = self.jacobian_sphere(cx,cy,cz,r)
 
         return jacobian
 
     def execute_jacobian(self, input_vector):
 
-        jacobian_sphere = self.ThreadPool.map(self.compute_jacobian_sphere,input_vector)
+        jacobian_sphere = []
+
+        mixs,miys,mizs,cxs,cys,czs,rs = symbols('mixs,miys,mizs,cxs,cys,czs,rs')
+
+        fcx = sqrt((mixs - cxs)**2 + (miys - cys)**2  + (mizs - czs)**2) - rs
+        fcy = sqrt((mixs - cxs)**2 + (miys - cys)**2  + (mizs - czs)**2) - rs
+        fcz = sqrt((mixs - cxs)**2 + (miys - cys)**2  + (mizs - czs)**2) - rs
+        fradius = sqrt((mixs - cxs)**2 + (miys - cys)**2  + (mizs - czs)**2) - rs
+
+        self.deriv_cx = diff(fcx,cxs)
+        self.deriv_cy = diff(fcy,cys)
+        self.deriv_cz = diff(fcz,czs)
+        self.deriv_r  = diff(fradius,rs)
+        jacobian_sphere = (self.ThreadPool.map(self.compute_jacobian_sphere,input_vector))
 
         return jacobian_sphere
 
@@ -755,11 +786,16 @@ class Segmentation:
         cluster_idx = []
         cov_mat = []
         d = []
-        first_run = 0
-
-        input_vector = np.loadtxt('camera/jac_input_vector')
-        jacobian_sphere = seg.execute_jacobian((input_vector))
-        print('done1')
+        first_run = True
+        cov_mat = []
+        cluster_normals = []
+        cluster_normals_app = []
+        clusters_radius = []
+        radius_0 = []
+        center_0 = []
+        xstart_0 = []
+        input_vector = []
+        temp = []
 
         ### loop to look at each cluter 1 by 1
         for i in range(np.amax(clusterlabels)+1):
@@ -775,6 +811,8 @@ class Segmentation:
             ## extract cluster from pcd
             clusters.append(xyz[cluster_idx[i]])
 
+            clusters_radius.append(clusters)
+
             ## tree qurry over the current cluster
             tree = KDTree(np.squeeze(clusters))
             dist, ind = tree.query(np.squeeze(clusters), k = neighbors)
@@ -784,69 +822,53 @@ class Segmentation:
             ## multi processing of normals for current cluster
             cluster_normals = np.asarray(p.map(seg.normals,clusters_ind))
 
+            cluster_normals_app.append(cluster_normals)
+
             # save cluster_normals
             # np.savetxt('camera/cluster_normals', cluster_normals)
 
 
             cluster_mean = (np.mean(clusters,axis = 1))
 
-            ###########################################################
-            #plane
 
-            cov_mat = []
-            cov_mat.append( (1/len(clusters)) *
-                           (np.dot(( np.squeeze(clusters) - cluster_mean),
-                                    np.transpose( np.squeeze(clusters) - cluster_mean))))
+            ##### Plane #####
 
-            cov_mat_normals = np.asarray(p.map(seg.normals,cov_mat))
-
-
-            #d = distance to origin calculated from the mean position
-            d.append( -np.transpose(cov_mat_normals) * cluster_mean)
-
-
-            #plane error missing
-
-
-            ###########################################################
-            #sphere
-
-            #print(np.asarray([clusters[i]]),'clusters')
-
-            # normals = np.asarray(p.map(seg.normals,np.asarray([clusters[i]])))
-
-            # print(normals,'normals')
-
-            # print(np.shape(normals),'normals')
+            # print(len(clusters[0]),'clusters len')
             #
-            # print(np.shape(clusters),'clusters')
-
+            # cov_mat.append( (1/len(clusters)) *
+            #                (np.dot(( np.squeeze(clusters) - cluster_mean),
+            #                         np.transpose( np.squeeze(clusters) - cluster_mean))))
             #
-            # r0 = -(np.dot(normals, np.transpose(np.sum(clusters)) * np.sum(normals)))
-            # print(r0,'r0')
-            # r0 = -np.dot((np.transpose(np.sum(clusters))),np.sum(normals))
-            # print(r0,'r0')
-            # r0 = np.dot(normals,(np.sum(np.dot(np.transpose(normals),normals))))
-            # print(r0,'r0')
-            # r0 =-(np.dot(np.sum(np.transpose(normals)),np.sum(normals)))
-            # print(r0,'r0')
-
-            # print(np.squeeze(clusters),'clusters squeeze')
-
-            # r0 = (np.dot(len(cluster_normals),(np.sum(np.dot(np.transpose(cluster_normals),cluster_normals)))) \
-            #         -(np.dot(np.sum(np.transpose(cluster_normals)),np.sum(cluster_normals))))
-            # print(r0,'r0')
-            # r0 = -(np.dot(len(cluster_normals), np.sum(np.dot(np.transpose(np.squeeze(clusters)) , cluster_normals))) \
-            #        - np.dot((np.sum(np.transpose(clusters))),np.sum(cluster_normals)))
+            # cov_mat_normals = np.asarray(p.map(seg.normals,cov_mat))
             #
-            # print(r0,'r0')
+            #
+            #
+            # #d = distance to origin calculated from the mean position
+            # d.append( -np.transpose(cov_mat_normals) * cluster_mean)
+
+
+            #print(d,'d')
+
+            ###### sphere ######
+
+            # cluster_normals = cluster_normals_app
+            #
+            # print(np.shape(cluster_normals[0]),'cluster_normals')
+            # print(np.shape(cluster_normals[1]),'cluster_normals')
+            # print(np.shape(np.squeeze(clusters_radius[0])),'clusters')
+            #
+            # clusters = clusters_radius
 
             r0 = -(np.dot(len(cluster_normals), np.sum(np.dot(np.transpose(np.squeeze(clusters)) , cluster_normals))) \
                   - np.dot((np.sum(np.transpose(clusters))),np.sum(cluster_normals))) \
                     /((len(cluster_normals)*(np.sum(np.dot(np.transpose(cluster_normals),cluster_normals)))) \
                     -(np.dot(np.sum(np.transpose(cluster_normals)),np.sum(cluster_normals))))
 
+            radius_0.append(r0)
+
             print(r0,'r0')
+            print(radius_0,'radius_0')
+
 
             # print(np.sum(cluster_normals,axis = 0),'sumclsuters')
             # print(np.sum(clusters,axis = 1),'sumclsuters')
@@ -854,13 +876,20 @@ class Segmentation:
 
             # print(1/len(cluster_normals),'(1/len(cluster_normals)')
 
+
             c0 = np.squeeze((1/len(cluster_normals))*(np.sum(np.dot(r0,cluster_normals)+(clusters),axis = 1)))
 
+            center_0.append(c0)
+
             print(c0,'c0')
+            print(center_0,'center_0')
 
             x0 = np.array([c0[0], c0[1], c0[2], LA.norm(r0)])
 
+            xstart_0.append(x0)
+
             print(x0,'x0')
+            print(xstart_0,'xstart_0')
 
             # decision_variabels =
             length_normals = len(cluster_normals)
@@ -876,12 +905,10 @@ class Segmentation:
             # print(np.transpose(clusters)[1,:],'cluster')
             # print(clusters[0][1][1],'cluster')
 
-            if first_run == 0:
-                first_run += 1
-                cxc = c0[0]
-                cyc = c0[1]
-                czc = c0[2]
-                rc = r0
+            cxc = c0[0]
+            cyc = c0[1]
+            czc = c0[2]
+            rc = LA.norm(r0)
 
             mix = np.squeeze(np.transpose(clusters)[0,:])
             miy = np.squeeze(np.transpose(clusters)[1,:])
@@ -891,76 +918,216 @@ class Segmentation:
             czc = np.linspace(czc,czc,len(clusters[0]))
             rc = np.linspace(rc,rc,len(clusters[0]))
 
-            jac_input_vector.append(mix)
-            jac_input_vector.append(miy)
-            jac_input_vector.append(miz)
-            jac_input_vector.append(cxc)
-            jac_input_vector.append(cyc)
-            jac_input_vector.append(czc)
-            jac_input_vector.append(rc)
 
-            # print((jac_input_vector),'jac_input_vector')
-            #
-            # np.savetxt('camera/jac_input_vector', jac_input_vector)
 
-            jacobian_sphere = seg.execute_jacobian(np.transpose(jac_input_vector))
+            # input_vector = np.append(input_vector,mix)
+            # input_vector = np.append(input_vector,miy)
+            # input_vector = np.append(input_vector,miz)
+            # input_vector = np.append(input_vector,cxc)
+            # input_vector = np.append(input_vector,cyc)
+            # input_vector = np.append(input_vector,czc)
+            # input_vector = np.append(input_vector,rc)
 
-            print(len(jac_input_vector[0]),'jacobian_sphere len')
+            input_vector = []
 
-            print(jacobian_sphere,'jacobian_sphere')
-            print(np.shape(jacobian_sphere),'jacobian_sphere')
+            input_vector.append(mix)
+            input_vector.append(miy)
+            input_vector.append(miz)
+            input_vector.append(cxc)
+            input_vector.append(cyc)
+            input_vector.append(czc)
+            input_vector.append(rc)
 
-            print('done')
-            # ,cyc,czc,rc
-            # print(jac_input_vector,'jac_input_vector')
+            # print(input_vector,'input_vector')
+            # if i == 0:
+            #     np.savetxt('camera/jac_input_vector', input_vector)
 
-            # jacobian_sphere = self.ThreadPool.map(self.compute_jacobian_sphere,jac_input_vector)
+            jac_input_vector = (input_vector)
+            print(i,'i')
+            # jac_input_vector = []
+            #
+            # temp.append(jac_input_vector)
 
-            # cx = symbols('cx')
-            # fcx = (1/length_normals)*(sqrt((clusters[0][0][0] - cx)**2 - (clusters[0][0][1] - c0[1])**2 - (clusters[0][0][2] - c0[2])**2) - r0)**2
-            #
-            # fdcx = diff(fcx,cx)
-            #
-            # cy = symbols('cy')
-            # fcy = (1/length_normals)*(sqrt((clusters[0][0][0] - c0[0])**2 - (clusters[0][0][1] - cy)**2 - (clusters[0][0][2] - c0[2])**2) - r0)**2
-            #
-            # fdcy = diff(fcy,cy)
-            #
-            # cz = symbols('cz')
-            # fcz = (1/length_normals)*(sqrt((clusters[0][0][0] - c0[0])**2 - (clusters[0][0][1] - c0[1])**2 - (clusters[0][0][2] - cz)**2) - r0)**2
-            #
-            # fdcz = diff(fcz,cz)
-            #
-            # r = symbols('r')
-            # fradius = (1/length_normals)*(sqrt((clusters[0][0][0] - c0[0])**2 - (clusters[0][0][1] - c0[1])**2 - (clusters[0][0][2] - c0[2])**2) - r)**2
-            #
-            # fdradius = diff(fradius,r)
-            #
-            # jacobian_sphere_temp = np.array([fdcx, fdcy, fdcz, fdradius])
-            #
-            # jacobian_sphere.append(jacobian_sphere_temp)
-            #
-            #
-            # print(jacobian_sphere,'jacobian_sphere')
+        # print((jac_input_vector),'jac_input_vector')
+        #
 
-            exit()
+        # print(jac_input_vector,'jac_input_vector')
+        # print(temp,'temp')
+        # print((jac_input_vector),'jac_input_vector')
+        print(np.shape((jac_input_vector)),'jac_input_vector')
 
-            # res_lsq_lm  = least_squares(sphere_mini_LM, x0 , args = clusters )
-            #
-            # # res_lsq_lm, what = curve_fit(sphere_mini_LM, x0 , clusters)
-            #
-            # print(res_lsq_lm,'res_lsq_lm')
-            #
-            # print(res_lsq_lm.x[3],'res_lsq_lm shape')
-            #
-            # print(x0,'x0')
-            #
-            # mesh = o3d.geometry.TriangleMesh.create_sphere(radius = r0)
-            #
-            # center = np.array([res_lsq_lm.x[0],res_lsq_lm.x[1],res_lsq_lm.x[2]])
-            mesh = 0
-            center = 0
+        np.savetxt('camera/jac_input_vector', jac_input_vector, fmt='%f')
 
+        mix = np.squeeze(np.transpose(clusters)[0,:])
+        miy = np.squeeze(np.transpose(clusters)[1,:])
+        miz = np.squeeze(np.transpose(clusters)[2,:])
+
+
+        startf0 = 0
+
+        startf0 = np.sqrt((mix - c0[0])**2 + (miy - c0[1])**2  + (miz - c0[2])**2) - r0
+        print(np.shape(startf0),'startf0')
+
+        # print(np.shape(temp[0]),'temp')
+        # print(np.shape(temp),'temp')
+
+        jacobian_sphere = seg.execute_jacobian(np.transpose(jac_input_vector))
+
+        print('done jacobian_sphere')
+        # print(jacobian_sphere,'jacobian_sphere')
+        print(np.shape(jacobian_sphere),'jacobian_sphere')
+        print(np.shape(jacobian_sphere[0]),'jacobian_sphere len')
+        print(length_normals),'length_normals'
+        print('done')
+
+        # delta = -(dot(Jt*J)^-1*Jt*f0)
+
+        lm_delta = np.dot(-(np.dot(np.transpose(jacobian_sphere),jacobian_sphere))**(-1), (np.dot(np.transpose(jacobian_sphere),startf0)))
+        print(lm_delta,'delta')
+        print(np.shape(lm_delta),'delta')
+        print(LA.norm(lm_delta),'delta norm')
+
+        mix = np.squeeze(np.transpose(clusters)[0,:])
+        miy = np.squeeze(np.transpose(clusters)[1,:])
+        miz = np.squeeze(np.transpose(clusters)[2,:])
+
+        eps = 20
+        lamda = 0.75
+
+        c = 0.75
+
+        count = 0
+        first_loop = True
+
+        print(LA.norm(lm_delta),'LA.norm(lm_delta)')
+        print(eps,'eps')
+
+
+        while (LA.norm(lm_delta) < eps ):
+
+            count += 1
+
+            print('#############################################################')
+            print(count,'count')
+
+
+            if first_loop == True:
+
+                cx  = c0[0]
+                cy  = c0[1]
+                cz  = c0[2]
+                r   = r0
+
+                x_current = np.array([c0[0] ,c0[1] ,c0[2] ,r0 ])
+
+                mix = np.squeeze(np.transpose(clusters)[0,:])
+                miy = np.squeeze(np.transpose(clusters)[1,:])
+                miz = np.squeeze(np.transpose(clusters)[2,:])
+                cxc = np.linspace(cx,cx,len(clusters[0]))
+                cyc = np.linspace(cy,cy,len(clusters[0]))
+                czc = np.linspace(cz,cz,len(clusters[0]))
+                rc = np.linspace(r,r,len(clusters[0]))
+
+                lm_input_vector = []
+
+                lm_input_vector.append(mix)
+                lm_input_vector.append(miy)
+                lm_input_vector.append(miz)
+                lm_input_vector.append(cxc)
+                lm_input_vector.append(cyc)
+                lm_input_vector.append(czc)
+                lm_input_vector.append(rc)
+
+                first_loop = False
+
+            else:
+
+                cx  = x_current[0]
+                cy  = x_current[1]
+                cz  = x_current[2]
+                r   = x_current[3]
+
+
+                mix = np.squeeze(np.transpose(clusters)[0,:])
+                miy = np.squeeze(np.transpose(clusters)[1,:])
+                miz = np.squeeze(np.transpose(clusters)[2,:])
+                cxc = np.linspace(cx,cx,len(clusters[0]))
+                cyc = np.linspace(cy,cy,len(clusters[0]))
+                czc = np.linspace(cy,cy,len(clusters[0]))
+                rc = np.linspace(r,r,len(clusters[0]))
+
+                lm_input_vector = []
+
+                lm_input_vector.append(mix)
+                lm_input_vector.append(miy)
+                lm_input_vector.append(miz)
+                lm_input_vector.append(cxc)
+                lm_input_vector.append(cyc)
+                lm_input_vector.append(czc)
+                lm_input_vector.append(rc)
+
+
+            # f0
+            lm_f0 = np.sqrt((mix - cx)**2 + (miy - cy)**2  + (miz - cz)**2) - r
+
+            # J  = J(x0)
+            lm_jacobian_sphere = seg.execute_jacobian(np.transpose(lm_input_vector))
+
+            # H  = dot(Jt,J)
+            lm_hessian = np.dot(np.transpose(lm_jacobian_sphere),lm_jacobian_sphere)
+
+            lm_hessian_lamda_I = np.identity(4) * lamda
+
+            lm_delta = np.dot(- inv(lm_hessian + lm_hessian_lamda_I), (np.dot(np.transpose(lm_jacobian_sphere),lm_f0)))
+
+
+            #F error first round
+            lm_F_x0 = np.dot(np.transpose(lm_f0),lm_f0) + 2 * np.dot(np.dot(np.transpose(lm_f0),lm_jacobian_sphere) , lm_delta) + np.dot(np.transpose(lm_delta),np.dot(lm_hessian,lm_delta))
+
+            delta_x0 = np.array([cx + lm_delta[0], cy + lm_delta[1], cz + lm_delta[2], r + lm_delta[3]])
+
+            lm_f0_delta = np.sqrt((mix - delta_x0[0])**2 + (miy - delta_x0[1])**2  + (miz - delta_x0[2])**2) - delta_x0[3]
+
+            #F error
+            lm_F_x0_delta = np.dot(np.transpose(lm_f0_delta),lm_f0_delta) + 2 * np.dot(np.dot(np.transpose(lm_f0_delta),lm_jacobian_sphere)  , lm_delta) + np.dot(np.transpose(lm_delta),np.dot(lm_hessian,lm_delta))
+
+            print(lm_F_x0,'lm_F_x0')
+            print(delta_x0,'delta_x0')
+            # print(lm_f0_delta,'lm_f0_delta')
+            print(lm_F_x0_delta,'lm_F_x0_delta')
+
+
+
+
+            # # f0
+            # lm_f0 = np.sqrt((mix - delta_x0[0])**2 + (miy - delta_x0[1])**2  + (miz - delta_x0[2])**2) - delta_x0[3]
+            #
+            # lm_F_x0_delta = np.dot(np.transpose(lm_f0),lm_f0) + 2 * np.dot(np.dot(np.transpose(lm_f0),lm_jacobian_sphere) , lm_f0_delta) + np.dot(np.transpose(lm_delta),np.dot(lm_hessian,lm_delta))
+
+            print(lm_delta,'lm_delta')
+            print(LA.norm(lm_delta),'LA.norm(lm_delta)')
+            print(x_current,'x_current')
+
+            if ( lm_F_x0_delta < lm_F_x0):
+                x_current = x_current + lm_delta
+                lamda = lamda/c
+            else:
+                lamda = c * lamda
+
+            print(lamda,'lamda')
+            print(c,'c')
+            print(x_current,'x_current')
+            print(lm_F_x0_delta,'lm_F_x0_delta')
+            print(lm_F_x0,'lm_F_x0')
+            print(lm_delta,'lm_delta')
+            print(LA.norm(lm_delta),'LA.norm(lm_delta)')
+
+
+        print('done??')
+        exit()
+
+        ### loop to look at each cluter 1 by 1
+        for i in range(np.amax(clusterlabels)+1):
             ###########################################################
             #Cylinders
 
@@ -1056,15 +1223,8 @@ if __name__ == '__main__':
     draw2d_aruco_marker = False
     read_from_file = True
 
-    input_vector = np.loadtxt('camera/jac_input_vector')
-    jacobian_sphere = seg.execute_jacobian((input_vector))
-    print('done')
 
     while 1:
-
-        input_vector = np.loadtxt('camera/jac_input_vector')
-        jacobian_sphere = seg.execute_jacobian((input_vector))
-        print('done')
 
         #compute the rgb and depth img
         rgb_img, depth_img = cam.stream(colored_depth=False)
@@ -1097,9 +1257,9 @@ if __name__ == '__main__':
         seg.non_parametric_surface_class(binxyz, labels, neighbors)
 
         # seg.segmentate(crxyz,normals,visualize_db_clusters)
-        input_vector = np.loadtxt('camera/jac_input_vector')
-        jacobian_sphere = seg.execute_jacobian((input_vector))
-        print('done')
+        # input_vector = np.loadtxt('camera/jac_input_vector')
+        # jacobian_sphere = seg.execute_jacobian((input_vector))
+        # print('done')
 
         ########### not in use yet ###########
         mesh, center = seg.surface_estimation(binxyz, labels, neighbors)

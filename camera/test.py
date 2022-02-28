@@ -21,16 +21,38 @@ from scipy.optimize import least_squares
 import math
 from scipy import spatial
 from scipy.optimize import curve_fit
-from sympy import *
+import sympy
 from sympy.vector import *
 import functools
 from multiprocessing.pool import ThreadPool
-
+from sympy.utilities.lambdify import lambdify, implemented_function
+# from sympy.abc import x, y, z
+from sympy import Eq
+from numpy.linalg import inv
 
 class some:
     def __init__(self):
         self.ThreadPool = ThreadPool(processes = 100)
         self.len = 0
+        self.a = 0
+
+    def testtesting(self,f,g):
+
+        x,y = symbols('x,y')
+
+        self.a = self.a.subs([(x,f), (y,g)])
+
+        return self.a
+
+    def startingthing(self):
+
+        x,y = symbols('x,y')
+
+        self.a = x + 1 + y
+
+        self.a = s.testtesting(3,3)
+
+        return self.a
 
     def compute_jacobian_sphere(self, input_vector):
 
@@ -52,31 +74,38 @@ class some:
     def jacobian_sphere(self,mix,miy,miz,cx,cy,cz,r):
 
         cxs = symbols('cxs')
-        fcx = (1/self.len)*(sqrt((mix - cxs)**2 - (miy - cy)**2 - (miz - cz)**2) - r)**2
+        fcx = (sqrt((mix - cxs)**2 - (miy - cy)**2 - (miz - cz)**2) - r)**2
 
         fdcx = diff(fcx,cxs)
 
         cys = symbols('cys')
-        fcy = (1/self.len)*(sqrt((mix - cx)**2 - (miy - cys)**2 - (miz - cz)**2) - r)**2
+        fcy = (sqrt((mix - cx)**2 - (miy - cys)**2 - (miz - cz)**2) - r)**2
 
         fdcy = diff(fcy,cys)
 
         czs = symbols('czs')
-        fcz = (1/self.len)*(sqrt((mix - cx)**2 - (miy - cy)**2 - (miz - czs)**2) - r)**2
+        fcz = (sqrt((mix - cx)**2 - (miy - cy)**2 - (miz - czs)**2) - r)**2
 
         fdcz = diff(fcz,czs)
 
         rs = symbols('rs')
-        fradius = (1/self.len)*(sqrt((mix - cx)**2 - (miy - cy)**2 - (miz - cz)**2) - rs)**2
+        fradius = (sqrt((mix - cx)**2 - (miy - cy)**2 - (miz - cz)**2) - rs)**2
 
         fdradius = diff(fradius,rs)
         jacobian_sphere = np.array([fdcx, fdcy, fdcz, fdradius])
+
+        print(jacobian_sphere,'jacobian_sphere2')
 
         return jacobian_sphere
 
     def testing(self, input_vector):
 
-        jacobian_sphere = self.ThreadPool.map(self.compute_jacobian_sphere,input_vector)
+        jacobian_sphere = []
+
+        print(np.shape(input_vector),'input_vector')
+
+        for k in range(len(input_vector)):
+            jacobian_sphere.append(self.ThreadPool.map(self.compute_jacobian_sphere,input_vector[k]))
 
         return jacobian_sphere
 
@@ -88,14 +117,64 @@ class some:
 
 if __name__ == '__main__':
 
+
+    a = np.array([[1,2],[3,4]])
+
+    lamda = 2
+
+    print((a)**(-1))
+
+    exit()
+
     s = some()
 
-    input_vector = np.loadtxt('camera/jac_input_vector')
+    mix = 0.089924
+    miy = 0.101644
+    miz = 0.535250
+    cx = 0.099813
+    cy = 0.066042
+    cz = 0.529096
+    r = -0.018959
 
-    print(len(input_vector),'input_vector')
-    print(len(input_vector[0]),'input_vector')
+    mixs,miys,mizs,cxs,cys,czs,rs = symbols('mixs,miys,mizs,cxs,cys,czs,rs')
 
-    jacobian_sphere = s.wtf(input_vector)
+    x = 2*(cxs - mixs)*(-rs + sqrt((-cxs + mixs)**2 + (-cys + miys)**2 + (-czs + mizs)**2))/sqrt((-cxs + mixs)**2 + (-cys + miys)**2 + (-czs + mizs)**2)
+    fdcx = lambdify([mixs,miys,mizs,cxs,cys,czs,rs],x)
+    fdcx = fdcx(mix,miy,miz,cx,cy,cz,r)
 
-    print(jacobian_sphere,'jacobian_sphere')
-    print(len(jacobian_sphere),'jacobian_sphere')
+    print(fdcx,'fdcx')
+    exit()
+    # f = implemented_function('f', lambda x,y: x+1+y)
+    #
+    # lam_f = lambdify(x, f(x,y))
+    #
+    # print(lam_f(4,1),'lam_f(4)')
+
+    mixs = symbols('mixs')
+
+    f = lambdify([mixs,y,z],mixs+y+z)
+
+    f(1,1,1)
+
+    print(f(1,1,1),'f(1,1,1)')
+
+    exit()
+
+    # b = s.startingthing()
+    #
+    # print(b,'yes')
+
+
+
+    # input_vector = []
+    #
+    # for i in range(2):
+    #     input_vector.append(np.loadtxt('camera/jac_input_vector'))
+    #
+    # print(len(input_vector),'input_vector')
+    # print(len(input_vector[0]),'input_vector')
+    #
+    # jacobian_sphere = s.testing(input_vector)
+    #
+    # # print(jacobian_sphere,'jacobian_sphere')
+    # print(np.shape(jacobian_sphere),'jacobian_sphere')
