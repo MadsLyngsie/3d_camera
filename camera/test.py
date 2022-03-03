@@ -118,11 +118,11 @@ class some:
 if __name__ == '__main__':
 
 
-    a = np.array([[1,2],[3,4]])
+    a = np.array([[40,0],[0,40]])
 
     lamda = 2
 
-    print((a)**(-1))
+    print(inv(a))
 
     exit()
 

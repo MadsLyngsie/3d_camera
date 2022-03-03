@@ -711,6 +711,9 @@ class Segmentation:
 
         mixs,miys,mizs,cxs,cys,czs,rs = symbols('mixs,miys,mizs,cxs,cys,czs,rs')
 
+        # check different lambdify options and comparwe speed
+        # map faster if lambdify output is C for loop is faster
+
         fdcx = lambdify([mixs,miys,mizs,cxs,cys,czs,rs],self.deriv_cx)
         fdcx = fdcx(self.mix,self.miy,self.miz,cx,cy,cz,r)
 
@@ -763,21 +766,24 @@ class Segmentation:
 
         mixs,miys,mizs,cxs,cys,czs,rs = symbols('mixs,miys,mizs,cxs,cys,czs,rs')
 
-        fcx = sqrt((mixs - cxs)**2 + (miys - cys)**2  + (mizs - czs)**2) - rs
-        fcy = sqrt((mixs - cxs)**2 + (miys - cys)**2  + (mizs - czs)**2) - rs
-        fcz = sqrt((mixs - cxs)**2 + (miys - cys)**2  + (mizs - czs)**2) - rs
-        fradius = sqrt((mixs - cxs)**2 + (miys - cys)**2  + (mizs - czs)**2) - rs
+        e_sph = sqrt((mixs - cxs)**2 + (miys - cys)**2  + (mizs - czs)**2) - rs
+        # fcy = sqrt((mixs - cxs)**2 + (miys - cys)**2  + (mizs - czs)**2) - rs
+        # fcz = sqrt((mixs - cxs)**2 + (miys - cys)**2  + (mizs - czs)**2) - rs
+        # fradius = sqrt((mixs - cxs)**2 + (miys - cys)**2  + (mizs - czs)**2) - rs
 
-        self.deriv_cx = diff(fcx,cxs)
-        self.deriv_cy = diff(fcy,cys)
-        self.deriv_cz = diff(fcz,czs)
-        self.deriv_r  = diff(fradius,rs)
+        self.deriv_cx = diff(e_sph,cxs)
+        self.deriv_cy = diff(e_sph,cys)
+        self.deriv_cz = diff(e_sph,czs)
+        self.deriv_r  = diff(e_sph,rs)
         jacobian_sphere = (self.ThreadPool.map(self.compute_jacobian_sphere,input_vector))
 
         return jacobian_sphere
 
     def surface_estimation(self, xyz, clusterlabels, neighbors):
 
+        pcd.points = o3d.utility.Vector3dVector(xyz)
+
+        o3d.io.write_point_cloud("camera/pcddata.pcd", pcd)
         # np.savetxt('camera/pcddata', xyz)
         # np.savetxt('camera/clusterlabels', clusterlabels)
 
@@ -982,19 +988,16 @@ class Segmentation:
 
         # delta = -(dot(Jt*J)^-1*Jt*f0)
 
-        lm_delta = np.dot(-(np.dot(np.transpose(jacobian_sphere),jacobian_sphere))**(-1), (np.dot(np.transpose(jacobian_sphere),startf0)))
-        print(lm_delta,'delta')
-        print(np.shape(lm_delta),'delta')
-        print(LA.norm(lm_delta),'delta norm')
+        lm_delta = -np.dot( inv(np.dot(np.transpose(jacobian_sphere),jacobian_sphere)), (np.dot(np.transpose(jacobian_sphere),startf0)))
 
         mix = np.squeeze(np.transpose(clusters)[0,:])
         miy = np.squeeze(np.transpose(clusters)[1,:])
         miz = np.squeeze(np.transpose(clusters)[2,:])
 
-        eps = 20
-        lamda = 0.75
+        eps = 10**(-6)
 
-        c = 0.75
+        lamda = 10
+        c = 2
 
         count = 0
         first_loop = True
@@ -1002,14 +1005,14 @@ class Segmentation:
         print(LA.norm(lm_delta),'LA.norm(lm_delta)')
         print(eps,'eps')
 
+        print(np.array([c0[0],c0[1] ,c0[2] ,r0]))
 
-        while (LA.norm(lm_delta) < eps ):
+        countapp = []
+        lm_F_x0_app = []
+
+        while (LA.norm(lm_delta) > eps ):
 
             count += 1
-
-            print('#############################################################')
-            print(count,'count')
-
 
             if first_loop == True:
 
@@ -1078,34 +1081,36 @@ class Segmentation:
 
             lm_hessian_lamda_I = np.identity(4) * lamda
 
-            lm_delta = np.dot(- inv(lm_hessian + lm_hessian_lamda_I), (np.dot(np.transpose(lm_jacobian_sphere),lm_f0)))
-
+            lm_delta = -np.dot(inv(lm_hessian + lm_hessian_lamda_I), (np.dot(np.transpose(lm_jacobian_sphere),lm_f0)))
 
             #F error first round
             lm_F_x0 = np.dot(np.transpose(lm_f0),lm_f0) + 2 * np.dot(np.dot(np.transpose(lm_f0),lm_jacobian_sphere) , lm_delta) + np.dot(np.transpose(lm_delta),np.dot(lm_hessian,lm_delta))
+
 
             delta_x0 = np.array([cx + lm_delta[0], cy + lm_delta[1], cz + lm_delta[2], r + lm_delta[3]])
 
             lm_f0_delta = np.sqrt((mix - delta_x0[0])**2 + (miy - delta_x0[1])**2  + (miz - delta_x0[2])**2) - delta_x0[3]
 
+
             #F error
             lm_F_x0_delta = np.dot(np.transpose(lm_f0_delta),lm_f0_delta) + 2 * np.dot(np.dot(np.transpose(lm_f0_delta),lm_jacobian_sphere)  , lm_delta) + np.dot(np.transpose(lm_delta),np.dot(lm_hessian,lm_delta))
 
+
+
+            print('#############################################################')
+            print(count,'count')
+
             print(lm_F_x0,'lm_F_x0')
-            print(delta_x0,'delta_x0')
             # print(lm_f0_delta,'lm_f0_delta')
             print(lm_F_x0_delta,'lm_F_x0_delta')
-
-
-
-
+            # print(delta_x0,'delta_x0')
+            # print(lm_delta,'lm_delta')
             # # f0
             # lm_f0 = np.sqrt((mix - delta_x0[0])**2 + (miy - delta_x0[1])**2  + (miz - delta_x0[2])**2) - delta_x0[3]
             #
             # lm_F_x0_delta = np.dot(np.transpose(lm_f0),lm_f0) + 2 * np.dot(np.dot(np.transpose(lm_f0),lm_jacobian_sphere) , lm_f0_delta) + np.dot(np.transpose(lm_delta),np.dot(lm_hessian,lm_delta))
 
-            print(lm_delta,'lm_delta')
-            print(LA.norm(lm_delta),'LA.norm(lm_delta)')
+
             print(x_current,'x_current')
 
             if ( lm_F_x0_delta < lm_F_x0):
@@ -1117,10 +1122,16 @@ class Segmentation:
             print(lamda,'lamda')
             print(c,'c')
             print(x_current,'x_current')
-            print(lm_F_x0_delta,'lm_F_x0_delta')
-            print(lm_F_x0,'lm_F_x0')
-            print(lm_delta,'lm_delta')
             print(LA.norm(lm_delta),'LA.norm(lm_delta)')
+
+            countapp.append(count)
+            lm_F_x0_app.append(lm_F_x0)
+
+            if count == 40:
+                plt.axis([0, 40, 0, 1])
+                plt.scatter(countapp, lm_F_x0_app)
+                plt.pause(0.05)
+
 
 
         print('done??')
@@ -1194,9 +1205,14 @@ class Segmentation:
                     /np.dot(len(cluster_normals),(np.sum(np.dot(np.transpose(cluster_normals),cluster_normals))) \
                     -(np.dot(np.sum(np.transpose(cluster_normals)),np.sum(cluster_normals))))
 
+
+        # center = [0.09390587, 0.06827942, 0.61555819 ]
+        # # [0.09956031 0.07175935 0.99180109]
+        # radius_sphere = 0.035
+        #
+        # mesh = o3d.geometry.TriangleMesh.create_sphere( radius_sphere )
+
         return mesh, center
-
-
 
 
 if __name__ == '__main__':
@@ -1288,8 +1304,8 @@ if __name__ == '__main__':
         #
         # center2 = mesh.get_center() - pcd.get_center()
         #
-        # # mesh1 = mesh.translate((-center2[0],-center2[1],-center2[2]))
-        # mesh1 = mesh.translate((center[0],center[1],center[2]))
+        # mesh1 = mesh.translate((-center2[0],-center2[1],-center2[2]))
+        # # mesh1 = mesh.translate((center[0],center[1],center[2]))
         #
         # print(f'Center of mesh1: {mesh1.get_center()}')
         #
