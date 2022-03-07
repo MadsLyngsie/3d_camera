@@ -3,6 +3,7 @@ import numpy as np
 import open3d as o3d
 from sympy.utilities.autowrap import autowrap
 import matplotlib.pyplot as plt
+import time
 print("Environment Ready")
 # ------------------------------------>
 def jacobian_sphere():
@@ -71,9 +72,18 @@ def fitting_sphere(cluster_info, init_geometry_meta_info, optim_config_params, l
     # ------------------------> initial estimation of jacobian
     input_vector = np.append(cluster_xyz, np.ones((no_pts, 1)).dot(initial_model.transpose()), axis = 1)
     jacobian     = []
+    start_timer = time.perf_counter()
     for m in range(input_vector.shape[0]):
         jacobian.append(compute_jacobian_sphere(lambdified_jacobian_sphere, input_vector[m, :]))
     jacobian = np.array(jacobian)
+
+    end_timer = time.perf_counter()
+
+    final_time = end_timer - start_timer
+    print(final_time,'final_time')
+
+    exit()
+
     # -------------------> update initial values for refinement process
     quadratic_lost = initial_quadratic_lost
     error          = initial_error
@@ -107,8 +117,15 @@ def fitting_sphere(cluster_info, init_geometry_meta_info, optim_config_params, l
         # Since we do not know if the current incremental change in solution resulting in reduced quadratic loss
         if quadratic_lost_temp < quadratic_lost:
             # error decreased, reducing damping factor
+            print('#############################################')
+            print(x,'count')
+            print(quadratic_lost_temp,'quadratic_lost_temp')
+            print(quadratic_lost,'quadratic_lost')
+
             damping_factor = damping_factor / c
             # update the solution
+            print(solution,'solution')
+            print(solution_temp,'solution_temp')
             solution       = solution_temp
             # update error vector
             error          = error_temp
@@ -120,6 +137,7 @@ def fitting_sphere(cluster_info, init_geometry_meta_info, optim_config_params, l
             for m in range(input_vector.shape[0]):
                 jacobian.append(compute_jacobian_sphere(lambdified_jacobian_sphere, input_vector[m, :]))
             jacobian = np.array(jacobian)
+            print(jacobian,'jacobian')
         else:
             # error increased: discard and raising damping factor
             damping_factor = c * damping_factor

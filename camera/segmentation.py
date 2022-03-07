@@ -21,6 +21,7 @@ from sympy import *
 import functools
 from multiprocessing.pool import ThreadPool
 from numpy.linalg import inv
+import time
 
 
 def sphere_mini_LM(rc0, clusters):
@@ -847,8 +848,7 @@ class Segmentation:
             #
             # cov_mat_normals = np.asarray(p.map(seg.normals,cov_mat))
             #
-            #
-            #
+
             # #d = distance to origin calculated from the mean position
             # d.append( -np.transpose(cov_mat_normals) * cluster_mean)
 
@@ -977,7 +977,15 @@ class Segmentation:
         # print(np.shape(temp[0]),'temp')
         # print(np.shape(temp),'temp')
 
+
+        start_timer = time.perf_counter()
         jacobian_sphere = seg.execute_jacobian(np.transpose(jac_input_vector))
+        end_timer = time.perf_counter()
+
+        final_time = end_timer - start_timer
+        print(final_time,'final_time')
+
+        exit()
 
         print('done jacobian_sphere')
         # print(jacobian_sphere,'jacobian_sphere')
@@ -994,9 +1002,9 @@ class Segmentation:
         miy = np.squeeze(np.transpose(clusters)[1,:])
         miz = np.squeeze(np.transpose(clusters)[2,:])
 
-        eps = 10**(-6)
+        eps = 10**(-7)
 
-        lamda = 10
+        lamda = 100
         c = 2
 
         count = 0
@@ -1010,6 +1018,7 @@ class Segmentation:
         countapp = []
         lm_F_x0_app = []
 
+
         while (LA.norm(lm_delta) > eps ):
 
             count += 1
@@ -1021,7 +1030,10 @@ class Segmentation:
                 cz  = c0[2]
                 r   = r0
 
-                x_current = np.array([c0[0] ,c0[1] ,c0[2] ,r0 ])
+
+                x_current = np.array([cx ,cy ,cz ,r ])
+
+                print(x_current,'x_current qwer')
 
                 mix = np.squeeze(np.transpose(clusters)[0,:])
                 miy = np.squeeze(np.transpose(clusters)[1,:])
@@ -1041,15 +1053,81 @@ class Segmentation:
                 lm_input_vector.append(czc)
                 lm_input_vector.append(rc)
 
+                # J  = J(x0)
+                lm_jacobian_sphere = seg.execute_jacobian(np.transpose(lm_input_vector))
+
+                # H  = dot(Jt,J)
+                lm_hessian = np.dot(np.transpose(lm_jacobian_sphere),lm_jacobian_sphere)
+
                 first_loop = False
 
-            else:
+                # f0 error
+                lm_f0 = np.sqrt((mix - cx)**2 + (miy - cy)**2  + (miz - cz)**2) - r
+
+                #quadratic loss first round
+                lm_F_x0 = np.dot(np.transpose(lm_f0),lm_f0) + 2 * np.dot(np.dot(np.transpose(lm_f0),lm_jacobian_sphere) , lm_delta) + np.dot(np.transpose(lm_delta),np.dot(lm_hessian,lm_delta))
+
+            ########################################################################
+                                ## LOOOP START ##
+
+
+            lm_hessian_lamda_I = np.identity(4) * lamda
+
+            lm_delta = -np.dot(inv(lm_hessian + lm_hessian_lamda_I), (np.dot(np.transpose(lm_jacobian_sphere),lm_f0)))
+
+            if(LA.norm(lm_delta) <= eps ):
+                break
+
+            #solution temp
+            delta_x0 = np.array([cx + lm_delta[0], cy + lm_delta[1], cz + lm_delta[2], r + lm_delta[3]])
+
+            #error temp
+            lm_f0_delta = np.sqrt((mix - delta_x0[0])**2 + (miy - delta_x0[1])**2  + (miz - delta_x0[2])**2) - delta_x0[3]
+
+            #quadratic loss temp
+            lm_F_x0_delta = np.sum(lm_f0_delta * lm_f0_delta)/x_current.shape[0]
+
+            #F error
+            # lm_F_x0_delta = np.dot(np.transpose(lm_f0_delta),lm_f0_delta) + 2 * np.dot(np.dot(np.transpose(lm_f0_delta),lm_jacobian_sphere)  , delta_x0) + np.dot(np.transpose(delta_x0),np.dot(lm_hessian,delta_x0))
+
+
+            print('#############################################################')
+            print(count,'count')
+
+            # print(lm_f0[0],'lm_f0 [0]')
+            # print(lm_f0[1],'lm_f0 [1]')
+            print(lm_F_x0,'lm_F_x0')
+            # print(lm_f0_delta,'lm_f0_delta')
+
+            print(lm_F_x0_delta,'lm_F_x0_delta2')
+
+            # print(delta_x0,'delta_x0')
+            # print(lm_delta,'lm_delta')
+            # # f0
+            # lm_f0 = np.sqrt((mix - delta_x0[0])**2 + (miy - delta_x0[1])**2  + (miz - delta_x0[2])**2) - delta_x0[3]
+            #
+            # lm_F_x0_delta = np.dot(np.transpose(lm_f0),lm_f0) + 2 * np.dot(np.dot(np.transpose(lm_f0),lm_jacobian_sphere) , lm_f0_delta) + np.dot(np.transpose(lm_delta),np.dot(lm_hessian,lm_delta))
+
+
+            print(x_current,'x_current')
+
+            if ( lm_F_x0_delta < lm_F_x0):
+
+                lamda = lamda/c
+
+                x_current = x_current + lm_delta
 
                 cx  = x_current[0]
                 cy  = x_current[1]
                 cz  = x_current[2]
                 r   = x_current[3]
 
+
+                #quadratic loss update
+                lm_F_x0 = lm_F_x0_delta
+
+                #error update
+                lm_f0 = lm_f0_delta
 
                 mix = np.squeeze(np.transpose(clusters)[0,:])
                 miy = np.squeeze(np.transpose(clusters)[1,:])
@@ -1069,53 +1147,17 @@ class Segmentation:
                 lm_input_vector.append(czc)
                 lm_input_vector.append(rc)
 
+                # J  = J(x0)
+                lm_jacobian_sphere = seg.execute_jacobian(np.transpose(lm_input_vector))
 
-            # f0
-            lm_f0 = np.sqrt((mix - cx)**2 + (miy - cy)**2  + (miz - cz)**2) - r
+                # print(lm_jacobian_sphere,'lm_jacobian_sphere')
 
-            # J  = J(x0)
-            lm_jacobian_sphere = seg.execute_jacobian(np.transpose(lm_input_vector))
-
-            # H  = dot(Jt,J)
-            lm_hessian = np.dot(np.transpose(lm_jacobian_sphere),lm_jacobian_sphere)
-
-            lm_hessian_lamda_I = np.identity(4) * lamda
-
-            lm_delta = -np.dot(inv(lm_hessian + lm_hessian_lamda_I), (np.dot(np.transpose(lm_jacobian_sphere),lm_f0)))
-
-            #F error first round
-            lm_F_x0 = np.dot(np.transpose(lm_f0),lm_f0) + 2 * np.dot(np.dot(np.transpose(lm_f0),lm_jacobian_sphere) , lm_delta) + np.dot(np.transpose(lm_delta),np.dot(lm_hessian,lm_delta))
-
-
-            delta_x0 = np.array([cx + lm_delta[0], cy + lm_delta[1], cz + lm_delta[2], r + lm_delta[3]])
-
-            lm_f0_delta = np.sqrt((mix - delta_x0[0])**2 + (miy - delta_x0[1])**2  + (miz - delta_x0[2])**2) - delta_x0[3]
-
-
-            #F error
-            lm_F_x0_delta = np.dot(np.transpose(lm_f0_delta),lm_f0_delta) + 2 * np.dot(np.dot(np.transpose(lm_f0_delta),lm_jacobian_sphere)  , lm_delta) + np.dot(np.transpose(lm_delta),np.dot(lm_hessian,lm_delta))
+                # H  = dot(Jt,J)
+                lm_hessian = np.dot(np.transpose(lm_jacobian_sphere),lm_jacobian_sphere)
 
 
 
-            print('#############################################################')
-            print(count,'count')
 
-            print(lm_F_x0,'lm_F_x0')
-            # print(lm_f0_delta,'lm_f0_delta')
-            print(lm_F_x0_delta,'lm_F_x0_delta')
-            # print(delta_x0,'delta_x0')
-            # print(lm_delta,'lm_delta')
-            # # f0
-            # lm_f0 = np.sqrt((mix - delta_x0[0])**2 + (miy - delta_x0[1])**2  + (miz - delta_x0[2])**2) - delta_x0[3]
-            #
-            # lm_F_x0_delta = np.dot(np.transpose(lm_f0),lm_f0) + 2 * np.dot(np.dot(np.transpose(lm_f0),lm_jacobian_sphere) , lm_f0_delta) + np.dot(np.transpose(lm_delta),np.dot(lm_hessian,lm_delta))
-
-
-            print(x_current,'x_current')
-
-            if ( lm_F_x0_delta < lm_F_x0):
-                x_current = x_current + lm_delta
-                lamda = lamda/c
             else:
                 lamda = c * lamda
 
@@ -1127,90 +1169,88 @@ class Segmentation:
             countapp.append(count)
             lm_F_x0_app.append(lm_F_x0)
 
-            if count == 40:
-                plt.axis([0, 40, 0, 1])
-                plt.scatter(countapp, lm_F_x0_app)
-                plt.pause(0.05)
 
+        plt.axis([0, count, 0, np.max(lm_F_x0_app) + 0.01])
+        plt.scatter(countapp, lm_F_x0_app)
 
-
+        plt.show()
         print('done??')
-        exit()
+        # exit()
 
         ### loop to look at each cluter 1 by 1
-        for i in range(np.amax(clusterlabels)+1):
-            ###########################################################
-            #Cylinders
-
-            ## calculate normal centroid
-            nbar = np.sum(cluster_normals,axis = 0)
-            nbar = nbar/np.linalg.norm(nbar)
-
-            print(nbar,'nbar')
-
-            ## initialize z axis
-            z_hat = np.array([0,0,-1])
-
-            #compute the alignment transofrmation with the z axis
-            r_theta = np.arccos(np.dot(nbar,z_hat))
-            r_A = np.cross(nbar,z_hat)
-
-            ## Rodrigues formulation for rmat
-            skew_w = np.array([[0,-r_A[2],r_A[1]],[r_A[2],0,-r_A[0]],[-r_A[1],r_A[0],0]])
-
-            r_mat = np.eye(3) + skew_w + (skew_w.dot(skew_w))/(1+np.cos(r_theta))
-
-            ## normals of cluster aligned with z axis
-            nj_alligned = np.dot(np.squeeze(r_mat),np.transpose(cluster_normals))
-
-            ## compute aligend normal centroid
-            nja = np.mean(nj_alligned,axis = 1)
-            nja = nja/np.linalg.norm(nja)
-
-            print(nja,'nja')
-
-            ## decompose the current cluster for better computation
-            decomp_cluster = np.transpose(nj_alligned)
-
-            m = np.sqrt(len(decomp_cluster))
-
-            delta = np.exp2(np.sum(np.exp2(decomp_cluster[0,:]) - \
-                                   np.exp2(decomp_cluster[1,:]))) + \
-                                   4 * (np.exp2(np.sum( decomp_cluster[0,:] * \
-                                                       decomp_cluster[1,:])))
-
-            ## compute max and min angle for quardratic solution
-            theta_min = np.arctan2((np.sum(np.exp2(decomp_cluster[1,:]) -\
-                                           np.exp2(decomp_cluster[0,:])) - \
-                                           np.sqrt(delta)) ,\
-                                   (2 * np.sum(decomp_cluster[0,:] * (decomp_cluster[1,:]))))
-            print(theta_min,'theta_min')
-
-            a_min = np.array([[np.cos(theta_min)],[np.sin(theta_min)],[0]])
-
-            print(a_min,'a_min')
-
-            ## Rodrigues formulation for rmat
-            skew_w = np.array([[0,-r_A[2],r_A[1]],[r_A[2],0,-r_A[0]],[-r_A[1],r_A[0],0]])
-
-            ## for inverse rodrigues take the inverse of the matrix ez
-            r_mat = np.eye(3) + skew_w + (skew_w.dot(skew_w))/(1+np.cos(r_theta))
-
-
-
-
-            ## inital radius guess
-            r0 = -(np.dot(len(cluster_normals), np.transpose(np.sum(clusters)) * np.sum(cluster_normals)) \
-                   - np.dot((np.transpose(np.sum(clusters))),np.sum(cluster_normals))) \
-                    /np.dot(len(cluster_normals),(np.sum(np.dot(np.transpose(cluster_normals),cluster_normals))) \
-                    -(np.dot(np.sum(np.transpose(cluster_normals)),np.sum(cluster_normals))))
-
-
-        # center = [0.09390587, 0.06827942, 0.61555819 ]
-        # # [0.09956031 0.07175935 0.99180109]
-        # radius_sphere = 0.035
+        # for i in range(np.amax(clusterlabels)+1):
+        #     ###########################################################
+        #     #Cylinders
         #
-        # mesh = o3d.geometry.TriangleMesh.create_sphere( radius_sphere )
+        #     ## calculate normal centroid
+        #     nbar = np.sum(cluster_normals,axis = 0)
+        #     nbar = nbar/np.linalg.norm(nbar)
+        #
+        #     print(nbar,'nbar')
+        #
+        #     ## initialize z axis
+        #     z_hat = np.array([0,0,-1])
+        #
+        #     #compute the alignment transofrmation with the z axis
+        #     r_theta = np.arccos(np.dot(nbar,z_hat))
+        #     r_A = np.cross(nbar,z_hat)
+        #
+        #     ## Rodrigues formulation for rmat
+        #     skew_w = np.array([[0,-r_A[2],r_A[1]],[r_A[2],0,-r_A[0]],[-r_A[1],r_A[0],0]])
+        #
+        #     r_mat = np.eye(3) + skew_w + (skew_w.dot(skew_w))/(1+np.cos(r_theta))
+        #
+        #     ## normals of cluster aligned with z axis
+        #     nj_alligned = np.dot(np.squeeze(r_mat),np.transpose(cluster_normals))
+        #
+        #     ## compute aligend normal centroid
+        #     nja = np.mean(nj_alligned,axis = 1)
+        #     nja = nja/np.linalg.norm(nja)
+        #
+        #     print(nja,'nja')
+        #
+        #     ## decompose the current cluster for better computation
+        #     decomp_cluster = np.transpose(nj_alligned)
+        #
+        #     m = np.sqrt(len(decomp_cluster))
+        #
+        #     delta = np.exp2(np.sum(np.exp2(decomp_cluster[0,:]) - \
+        #                            np.exp2(decomp_cluster[1,:]))) + \
+        #                            4 * (np.exp2(np.sum( decomp_cluster[0,:] * \
+        #                                                decomp_cluster[1,:])))
+        #
+        #     ## compute max and min angle for quardratic solution
+        #     theta_min = np.arctan2((np.sum(np.exp2(decomp_cluster[1,:]) -\
+        #                                    np.exp2(decomp_cluster[0,:])) - \
+        #                                    np.sqrt(delta)) ,\
+        #                            (2 * np.sum(decomp_cluster[0,:] * (decomp_cluster[1,:]))))
+        #     print(theta_min,'theta_min')
+        #
+        #     a_min = np.array([[np.cos(theta_min)],[np.sin(theta_min)],[0]])
+        #
+        #     print(a_min,'a_min')
+        #
+        #     ## Rodrigues formulation for rmat
+        #     skew_w = np.array([[0,-r_A[2],r_A[1]],[r_A[2],0,-r_A[0]],[-r_A[1],r_A[0],0]])
+        #
+        #     ## for inverse rodrigues take the inverse of the matrix ez
+        #     r_mat = np.eye(3) + skew_w + (skew_w.dot(skew_w))/(1+np.cos(r_theta))
+        #
+        #
+        #
+        #
+        #     ## inital radius guess
+        #     r0 = -(np.dot(len(cluster_normals), np.transpose(np.sum(clusters)) * np.sum(cluster_normals)) \
+        #            - np.dot((np.transpose(np.sum(clusters))),np.sum(cluster_normals))) \
+        #             /np.dot(len(cluster_normals),(np.sum(np.dot(np.transpose(cluster_normals),cluster_normals))) \
+        #             -(np.dot(np.sum(np.transpose(cluster_normals)),np.sum(cluster_normals))))
+
+
+        center = [x_current[0],  x_current[1] , x_current[2] ]
+        # [ 0.09804494  0.05788992  0.54030654 -0.04078524]
+        radius_sphere = abs(x_current[3])
+
+        mesh = o3d.geometry.TriangleMesh.create_sphere( radius_sphere )
 
         return mesh, center
 
@@ -1295,27 +1335,27 @@ if __name__ == '__main__':
         #cv2.waitKey(1)
 
         # check sphere center
-        # print(f'Center of mesh: {mesh.get_center()}')
-        # print(center,'center')
-        #
-        # pcdcenter = pcd.get_center()
-        #
-        # print(f'Center of pcd: {pcd.get_center()}')
-        #
-        # center2 = mesh.get_center() - pcd.get_center()
-        #
+        print(f'Center of mesh: {mesh.get_center()}')
+        print(center,'center')
+
+        pcdcenter = pcd.get_center()
+
+        print(f'Center of pcd: {pcd.get_center()}')
+
+        center2 = mesh.get_center() - pcd.get_center()
+
         # mesh1 = mesh.translate((-center2[0],-center2[1],-center2[2]))
-        # # mesh1 = mesh.translate((center[0],center[1],center[2]))
-        #
-        # print(f'Center of mesh1: {mesh1.get_center()}')
-        #
-        # print(f'Center of mesh: {mesh.get_center()}')
+        mesh1 = mesh.translate((center[0],center[1],center[2]))
+
+        print(f'Center of mesh1: {mesh1.get_center()}')
+
+        print(f'Center of mesh: {mesh.get_center()}')
 
         ## visualize point cloud caculated from the depth image
         if added == True:
             vis.add_geometry(pcd)
             added = False
         vis.update_geometry(pcd)
-        # o3d.visualization.draw_geometries([pcd,mesh1])
+        o3d.visualization.draw_geometries([pcd,mesh1])
         vis.poll_events()
         vis.update_renderer()
