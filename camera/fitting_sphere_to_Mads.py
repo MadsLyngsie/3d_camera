@@ -22,8 +22,11 @@ def jacobian_sphere():
     J_cz      = sp.diff(e_sph, c_z)
     J_r       = sp.diff(e_sph, r)
     jacobian_sphere  = sp.Matrix([J_cx, J_cy, J_cz, J_r])
+    print(jacobian_sphere,'jacobian_sphere')
     jacobian_sphere  = jacobian_sphere.subs(sp.diff(sp.sign(r), r), 0)
-    jacobian_sphere  = autowrap(jacobian_sphere, backend="cython", args = [m_ix, m_iy, m_iz, c_x, c_y, c_z, r])
+    print(jacobian_sphere,'jacobian_sphere')
+    jacobian_sphere  = autowrap(jacobian_sphere, backend="f2py", args = [m_ix, m_iy, m_iz, c_x, c_y, c_z, r])
+    print(jacobian_sphere,'jacobian_sphere')
     return jacobian_sphere
 
 
@@ -59,6 +62,8 @@ def fitting_sphere(cluster_info, init_geometry_meta_info, optim_config_params, l
     # parsing
     internal_states        = []
     cluster_xyz            = cluster_info[0]
+    print(cluster_xyz,'cluster_xyz')
+
     cluster_normals        = cluster_info[1]
     no_pts                 = cluster_xyz.shape[0]
     # parsing
@@ -70,9 +75,16 @@ def fitting_sphere(cluster_info, init_geometry_meta_info, optim_config_params, l
     initial_error          = init_geometry_meta_info["error"]
     initial_quadratic_lost = init_geometry_meta_info["quadratic_lost"]
     # ------------------------> initial estimation of jacobian
+
+    print((initial_model),'initial_model')
+    print(np.shape(cluster_xyz),'cluster_xyz')
+    print(np.shape(no_pts),'no_pts')
+
+
     input_vector = np.append(cluster_xyz, np.ones((no_pts, 1)).dot(initial_model.transpose()), axis = 1)
     jacobian     = []
     start_timer = time.perf_counter()
+
     for m in range(input_vector.shape[0]):
         jacobian.append(compute_jacobian_sphere(lambdified_jacobian_sphere, input_vector[m, :]))
     jacobian = np.array(jacobian)
@@ -82,7 +94,7 @@ def fitting_sphere(cluster_info, init_geometry_meta_info, optim_config_params, l
     final_time = end_timer - start_timer
     print(final_time,'final_time')
 
-    exit()
+
 
     # -------------------> update initial values for refinement process
     quadratic_lost = initial_quadratic_lost
@@ -151,6 +163,8 @@ def fitting_sphere(cluster_info, init_geometry_meta_info, optim_config_params, l
 
 if __name__ == "__main__":
     # initialization
+    start_timer = time.perf_counter()
+
     vis             = True
     initial_model   = []
     optimized_model = []
@@ -168,7 +182,7 @@ if __name__ == "__main__":
 
     # optimizer configuration parameters
     optim_config_params                   = {}
-    optim_config_params["damping_factor"] = 10000
+    optim_config_params["damping_factor"] = 100
     optim_config_params["c"]              = 2
     optim_config_params["threshold"]      = 10e-7
     # dictionary to collect geometric relevant meta-info
@@ -182,7 +196,14 @@ if __name__ == "__main__":
     geometry_meta_info["init"]["error"]          =  init_result[2]
     geometry_meta_info["init"]["T"]              =  init_result[3]
     # ----------------> optimizing sphere model
+
+
     refined_result = fitting_sphere(cluster_info, geometry_meta_info["init"], optim_config_params, lambdified_jacobian_sphere)
+
+    end_timer = time.perf_counter()
+    final_time = end_timer - start_timer
+    print(final_time,'final_time')
+
     geometry_meta_info["refined"]["model"]          = refined_result[0][0]
     geometry_meta_info["refined"]["quadratic_lost"] = refined_result[0][1]
     geometry_meta_info["refined"]["T"]              = refined_result[0][2]

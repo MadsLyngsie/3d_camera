@@ -29,6 +29,8 @@ from sympy.utilities.lambdify import lambdify, implemented_function
 # from sympy.abc import x, y, z
 from sympy import Eq
 from numpy.linalg import inv
+from sympy.vector import CoordSys3D
+
 
 class some:
     def __init__(self):
@@ -117,12 +119,54 @@ class some:
 
 if __name__ == '__main__':
 
+    q = np.array([1,2,3])
+    w = np.array([1,2,3])
+    e = np.array([1,2,3])
 
-    a = np.array([[40,0],[0,40],[0,0]])
+    a = Matrix([q,w,e])
 
-    lamda = a.shape[0]
+    b = Matrix([3, 2, 1])
 
-    print(lamda)
+    c = np.array([q,w,e])
+
+    d = np.array([1,2,3])
+
+    print(shape(c),'c')
+    print(shape(d),'d')
+
+    print(shape(a),'a')
+    print(shape(b),'b')
+
+    print(d*c,' ?? ')
+
+    print(b*a,'b*a')
+
+    exit()
+
+    print(shape(b),'b shape')
+
+    e = Matrix([5])
+
+    print(shape(e),'e')
+
+    print(b.add(e) ,'b+e')
+
+
+    exit()
+
+    print(shape(c),shape(d))
+    print(shape(c.T))
+
+    print(c.T,'c.T')
+
+    print(c.T - d,'c-d')
+
+    print(shape(a))
+    print(shape(b))
+    print(a,'a')
+    print(b,'b')
+    # print(shape(b*a))
+    print(a - b ,'a - b ')
 
     exit()
 
