@@ -123,9 +123,24 @@ if __name__ == '__main__':
     w = np.array([1,2,3])
     e = np.array([1,2,3])
 
-    a = Matrix([q,w,e])
+    # a = Matrix([q,w,e])
+    #
+    # q, w, e = symbols('q, w, e')
+    #
+    #
+    # b = Matrix([q, w, e])
 
-    b = Matrix([3, 2, 1])
+    b = np.array([q, w ,e])
+
+    a = [-0.0215724313324132, -2.39812678811891, 1.85915552334908]
+
+    print(a,'a')
+    print(np.transpose(a),'a')
+    print(np.linalg.norm(np.transpose(a)),'a')
+
+    print(math.sqrt( np.linalg.norm(b[0])**2 + np.linalg.norm(b[1])**2 + np.linalg.norm(b[2])**2  ),'b')
+
+    exit()
 
     c = np.array([q,w,e])
 

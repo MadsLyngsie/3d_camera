@@ -2,6 +2,7 @@ import pyrealsense2 as rs
 import cv2
 import numpy as np
 import open3d as o3d
+import math
 from sklearn.neighbors import KDTree
 from sklearn.cluster import DBSCAN
 import matplotlib.pyplot as plt
@@ -804,43 +805,63 @@ class Segmentation:
 
         d, phi, theta, alpha, mix, miy, miz, r = symbols('d, phi, theta, alpha, mix, miy, miz, r')
 
-        vector_n = sp.Matrix([[sp.cos(phi) * sp.cos(theta) ], \
-                           [sp.sin(phi) * sp.sin(theta) ], \
-                           [sp.cos(theta)                    ]])
+        vector_n = sp.Matrix([[sp.cos(phi) * sp.sin(theta) ], \
+                              [sp.sin(phi) * sp.sin(theta) ], \
+                              [sp.cos(theta)                    ]])
+
+        # print(vector_n,'vector_n')
 
         vector_n_theta = sp.Matrix([[sp.cos(phi) * sp.cos(theta) ], \
-                                 [sp.sin(phi) * sp.sin(theta) ], \
-                                 [-sp.sin(theta)                   ]])
+                                    [sp.sin(phi) * sp.cos(theta) ], \
+                                    [-sp.sin(theta)                   ]])
+        # print(vector_n_theta,'vector_n_theta')
 
         vector_n_phi = sp.Matrix([[-sp.sin(phi)   ], \
-                              [sp.cos(phi)    ], \
-                              [0                   ]])
+                                  [sp.cos(phi)    ], \
+                                  [0                   ]])
+
+        # print(vector_n_phi,'vector_n_phi')
 
         vector_a = sp.Matrix(vector_n_theta * sp.cos(alpha) + vector_n_phi * sp.sin(alpha))
 
+        # print(vector_a,'vector_a')
+
         vector_mi = sp.Matrix([ mix, miy, miz ])
+
+        # print(vector_mi,'vector_mi')
 
         vector_p = sp.Matrix(d*vector_n)
 
-        print(vector_p,'vector_p')
-        print(type(vector_p),'vector_p')
-        print(vector_p[0],'vector_p')
-        print(shape(vector_p),'vector_p')
+        # print(vector_p,'vector_p')
 
-        print(vector_a,'vector_a')
-        print(shape(vector_a),'vector_a')
+        # print(vector_p,'vector_p')
+        # print(type(vector_p),'vector_p')
+        # print(vector_p[0],'vector_p')
+        # print(shape(vector_p),'vector_p')
+        #
+        # print(vector_a,'vector_a')
+        # print(shape(vector_a),'vector_a')
+        #
+        # print(shape((vector_mi - vector_p).T),'12 ++ 12')
+        # print(shape(vector_a * (vector_mi - vector_p).T),'123 ++ 123')
+        # print(shape(vector_a * (vector_mi - vector_p).T * vector_a),'124 ++ 124')
+        # print(shape(vector_p + vector_a * (vector_mi - vector_p).T * vector_a),' 125 ++ 125')
+        # print(vector_p + vector_a * (vector_mi - vector_p).T * vector_a - vector_mi,'126 ++ 126')
+        # print(shape(vector_p + vector_a * (vector_mi - vector_p).T * vector_a - vector_mi),'126 ++ 126')
+        # print(type(vector_p + vector_a * (vector_mi - vector_p).T * vector_a - vector_mi),'e_cylinder type')
+        # print(type(sp.sign(r)*r),'type(sp.sign(r)*r)')
 
-        print(shape((vector_mi - vector_p).T),'12 ++ 12')
-        print(shape(vector_a * (vector_mi - vector_p).T),'123 ++ 123')
-        print(shape(vector_a * (vector_mi - vector_p).T * vector_a),'124 ++ 124')
-        print(shape(vector_p + vector_a * (vector_mi - vector_p).T * vector_a),' 125 ++ 125')
-        print(vector_p + vector_a * (vector_mi - vector_p).T * vector_a - vector_mi,'126 ++ 126')
-        print(shape(vector_p + vector_a * (vector_mi - vector_p).T * vector_a - vector_mi),'126 ++ 126')
+        e_cylinder0 = ((vector_p + vector_a * (vector_mi - vector_p).T * vector_a - vector_mi)[0])**2
+        e_cylinder1 = ((vector_p + vector_a * (vector_mi - vector_p).T * vector_a - vector_mi)[1])**2
+        e_cylinder2 = ((vector_p + vector_a * (vector_mi - vector_p).T * vector_a - vector_mi)[2])**2
 
-        e_cylinder = (vector_p + vector_a * (vector_mi - vector_p).T * vector_a - vector_mi).norm() - sp.sign(r)*r
+        e_cylinder = sqrt(e_cylinder0 + e_cylinder1 + e_cylinder2) - sp.sign(r)*r
+
+        # e_cylinder = (vector_p + vector_a * (vector_mi - vector_p).T * vector_a - vector_mi) - sp.sign(r)*r
 
         print(e_cylinder,'e_cylinder')
-        print(shape(e_cylinder),'e_cylinder')
+        # print(shape(e_cylinder),'e_cylinder')
+
 
         deriv_d = diff(e_cylinder,d)
         deriv_theta = diff(e_cylinder,theta )
@@ -850,12 +871,13 @@ class Segmentation:
 
         lambdified_jacobian_cylinder  = sp.Matrix([deriv_d, deriv_theta, deriv_phi, deriv_alpha, deriv_r])
         lambdified_jacobian_cylinder  = lambdified_jacobian_cylinder.subs(sp.diff(sp.sign(r), r), 0)
-        lambdified_jacobian_cylinder  = autowrap(lambdified_jacobian_cylinder, backend="f2py", args = [d, phi, theta, alpha, mix, miy, miz, r])
+        lambdified_jacobian_cylinder  = autowrap(lambdified_jacobian_cylinder , backend="cython", args = [d, phi, theta, alpha, mix, miy, miz, r])
+
 
         return lambdified_jacobian_cylinder
 
     def compute_jacobian_cylinder_loop(self, lambdified_jacobian_cylinder, input_vector):
-        result = lambdified_jacobian_cylinder(*input_vector).reshape((7,)).astype('float32')
+        result = lambdified_jacobian_cylinder(*input_vector).reshape((5,)).astype('float32')
         return result
 
     def surface_estimation(self, xyz, clusterlabels, neighbors):
@@ -1392,6 +1414,10 @@ class Segmentation:
 
         alpha0 = np.arctan2(sin_alpha, cos_alpha)
 
+        print(type(alpha0),'type(alpha0)')
+        print(type(cos_alpha),'type(cos_alpha)')
+        print(type(sin_alpha),'type(sin_alpha)')
+
         pcd.points = o3d.utility.Vector3dVector(xyz)
         print(f'Center of pcd: {pcd.get_center()}')
 
@@ -1423,11 +1449,35 @@ class Segmentation:
 
         vector_p = np.array([[vector_p[0]],[vector_p[1]] ,[vector_p[2]] ])
 
+        #print(type(vector_p + vector_a * np.transpose(np.dot(vector_mi , vector_p)) * vector_a - np.transpose(vector_mi)),'lm_f_x0_cylinder1')
+        #print(np.linalg.norm(np.squeeze(vector_p + vector_a * np.transpose(np.dot(vector_mi , vector_p)) * vector_a - np.transpose(vector_mi))[0]),'np.linalg.norm(vector_p + vector_a * np.transpose(np.dot(vector_mi , vector_p)) * vector_a - np.transpose(vector_mi))')
 
-        #error f0
-        lm_f_x0_cylinder = vector_p + vector_a * np.transpose(np.dot(vector_mi , vector_p)) * vector_a - np.transpose(vector_mi)
+        cylinder_D = np.transpose(vector_p + vector_a * np.transpose(vector_mi - np.transpose(vector_p)) * vector_a - np.transpose(vector_mi))
+
+        lm_f_x0_cylinder_temp = []
+
+        for i in range(len(cylinder_D)):
+            lm_f_x0_cylinder_temp.append((math.sqrt(cylinder_D[i][0]**2 + cylinder_D[i][1]**2 + cylinder_D[i][2]**2 ) - abs(r0))**2 )
+
+        # print(len(lm_f_x0_cylinder_temp),'len(lm_f_x0_cylinder)')
+        # print(len(cylinder_D),'len(cylinder_D)')
+
+        #error 0
+        lm_f_x0_cylinder = np.sum(lm_f_x0_cylinder_temp)
 
         print(lm_f_x0_cylinder,'lm_f_x0_cylinder')
+
+        # print( cylinder_D[0] ,'1')
+        # print(math.sqrt(cylinder_D[0][0]**2 + cylinder_D[0][1]**2 + cylinder_D[0][2]**2 )  ,'1')
+        # print(np.shape(vector_p + vector_a * np.transpose(vector_mi - np.transpose(vector_p)) * vector_a - np.transpose(vector_mi)) ,'1')
+
+        # #error f0
+        # lm_f_x0_cylinder = math.sqrt((vector_p + vector_a * np.transpose(vector_mi - np.transpose(vector_p)) * vector_a - np.transpose(vector_mi))[0]**2 +\
+        #                              (vector_p + vector_a * np.transpose(vector_mi - np.transpose(vector_p)) * vector_a - np.transpose(vector_mi))[1]**2 +\
+        #                              (vector_p + vector_a * np.transpose(vector_mi - np.transpose(vector_p)) * vector_a - np.transpose(vector_mi))[2]**2 )\
+        #                                 - abs(r0)
+
+        # print(lm_f_x0_cylinder,'lm_f_x0_cylinder')
 
 
 
@@ -1447,16 +1497,14 @@ class Segmentation:
 
         lambdifing_jacobian_cylinder  = seg.lambdifing_jacobian_cylinder ()
 
-        jacobian_cylinder_forloop = []
+        lm_jacobian_cylinder_forloop = []
         for m in range(len(jac_input_vector_cylinder)):
-            jacobian_cylinder_forloop.append(seg.compute_jacobian_cylinder_loop( lambdifing_jacobian_cylinder, jac_input_vector_cylinder[m, :]) )
-        jacobian_cylinder = np.array(jacobian_cylinder_forloop)
+            lm_jacobian_cylinder_forloop.append(seg.compute_jacobian_cylinder_loop( lambdifing_jacobian_cylinder, jac_input_vector_cylinder[m, :]) )
+        lm_jacobian_cylinder = np.array(lm_jacobian_cylinder_forloop)
 
         # print(jacobian_cylinder,'jacobian_cylinder')
 
-
-
-        lm_delta_cylinder = -np.dot( inv(np.dot(np.transpose(jacobian_cylinder),jacobian_cylinder)), (np.dot(np.transpose(jacobian_cylinder),startf0)))
+        lm_delta_cylinder = -np.dot( inv(np.dot(np.transpose(lm_jacobian_cylinder),lm_jacobian_cylinder)), (np.dot(np.transpose(lm_jacobian_cylinder),lm_f_x0_cylinder)))
 
         eps = 10**(-7)
 
@@ -1470,31 +1518,21 @@ class Segmentation:
         lm_F_x0_app = []
         # jacobian_cylinder_forloop = []
 
-        px  = p0[0]
-        py  = p0[1]
-        pz  = p0[2]
-        ax  = a0[0]
-        ay  = a0[1]
-        az  = a0[2]
-        r   = r0
-
-        x_current = np.array([px,py,pz,ax,ay,az,r])
+        x_current = np.array([ [d], [n_polar_theta] , [n_polar_phi] , [alpha0] ,[r0] ])
 
         no_pts = clusters.shape[0]
-        initial_est = np.array([ [p0[0]] ,[p0[1]] ,[p0[2]], [a0[0]], [a0[1]], [a0[2]], [r0] ])
+        initial_est = np.array([ [d], [n_polar_theta] , [n_polar_phi] , [alpha0] ,[r0] ])
 
         jac_input_vector_cylinder = np.append(clusters,np.ones((no_pts, 1)).dot(np.transpose(initial_est)),axis = 1)
 
-        lm_jacobian_cylinder_forloop = []
-        for m in range(len(jac_input_vector_cylinder)):
-            lm_jacobian_cylinder_forloop.append(seg.compute_jacobian_cylinder_loop( lambdifing_jacobian_cylinder, jac_input_vector_cylinder[m, :]) )
-        lm_jacobian_cylinder = np.array(lm_jacobian_cylinder_forloop)
+        # lm_jacobian_cylinder_forloop = []
+        # for m in range(len(jac_input_vector_cylinder)):
+        #     lm_jacobian_cylinder_forloop.append(seg.compute_jacobian_cylinder_loop( lambdifing_jacobian_cylinder, jac_input_vector_cylinder[m, :]) )
+        # lm_jacobian_cylinder = np.array(lm_jacobian_cylinder_forloop)
 
         lm_hessian_cylinder = np.dot(np.transpose(lm_jacobian_cylinder),lm_jacobian_cylinder)
 
-        #error f0
-        lm_f_x0_cylinder = d*vector_n + vector_a * (vector_mi * (d * vector_n)) * vector_a - vector_mi
-
+        lm_f0_cylinder = lm_f_x0_cylinder
 
         #quadratic loss first round
         lm_F_x0_cylinder = np.dot(np.transpose(lm_f0_cylinder),lm_f0_cylinder)\
@@ -1507,17 +1545,43 @@ class Segmentation:
 
             lm_hessian_lamda_I = np.identity(4) * lamda
 
-            lm_delta_cylinder = -np.dot( inv(np.dot(np.transpose(jacobian_cylinder),jacobian_cylinder)), (np.dot(np.transpose(jacobian_cylinder),startf0)))
+            lm_delta_cylinder = -np.dot( inv(np.dot(np.transpose(lm_jacobian_cylinder),lm_jacobian_cylinder)), (np.dot(np.transpose(lm_jacobian_cylinder),startf0)))
 
             #solution temp
-            delta_x0 = np.array([px + lm_delta[0], py + lm_delta[1], pz + lm_delta[2],\
-                                 ax + lm_delta[3], ay + lm_delta[4], az + lm_delta[5],\
-                                 abs(r) + lm_delta[6]])
+            delta_x = np.array([d + lm_delta_cylinder[0], theta + lm_delta_cylinder[1], phi + lm_delta_cylinder[2],\
+                                 alpha + lm_delta_cylinder[3], abs(r) + lm_delta_cylinder[4]])
 
             #error f0
-            lm_f0_delta_cylinder = sqrt( (delta_x0[0] + delta_x0[3] * (mix - delta_x0[0]) * delta_x0[3] - mix)**2 +\
-                          (delta_x0[1] + delta_x0[4] * (miy - delta_x0[1]) * delta_x0[4] - miy)**2 +\
-                          (delta_x0[2] + delta_x0[5] * (miz - delta_x0[2]) * delta_x0[5] - miz)**2) - delta_x0[6]
+            vector_n = np.array([[cos(delta_x[2]) * cos(delta_x[1]) ], \
+                               [sin(delta_x[2]) * sin(delta_x[1]) ], \
+                               [cos(delta_x[1])                    ]])
+
+            vector_n_theta = np.array([[cos(delta_x[2]) * cos(delta_x[1]) ], \
+                                     [sin(delta_x[2]) * sin(delta_x[1]) ], \
+                                     [-sin(delta_x[1])                   ]])
+
+            vector_n_phi = np.array([[-sin(delta_x[2])   ], \
+                                  [cos(delta_x[2])    ], \
+                                  [0                   ]])
+
+            vector_a = np.squeeze((vector_n_theta * cos(delta_x[3]) + vector_n_phi * sin(delta_x[3])))
+
+            vector_a = np.array([[vector_a[0]],[vector_a[1]] ,[vector_a[2]] ])
+
+            vector_p = np.squeeze(np.transpose(delta_x[0]*vector_n ))
+
+            vector_p = np.array([[vector_p[0]],[vector_p[1]] ,[vector_p[2]] ])
+
+            cylinder_D = np.transpose(vector_p + vector_a * np.transpose(vector_mi - np.transpose(vector_p)) * vector_a - np.transpose(vector_mi))
+
+            lm_f0_delta_cylinder = []
+
+            for i in range(len(cylinder_D)):
+                lm_f0_delta_cylinder.append((math.sqrt(cylinder_D[i][0]**2 + cylinder_D[i][1]**2 + cylinder_D[i][2]**2 ) - abs(delta_x[4]))**2 )
+
+            #error 0
+            lm_f0_delta_cylinder = np.sum(lm_f0_delta_cylinder)
+
 
             #quadratlm_F_x0ic loss temp
             lm_F_x0_delta_cylinder = np.sum(lm_f0_delta_cylinder * lm_f0_delta_cylinder)/x_current.shape[0]
@@ -1534,13 +1598,12 @@ class Segmentation:
 
                 x_current = x_current + lm_delta_cylinder
 
-                px  = x_current[0]
-                py  = x_current[1]
-                pz  = x_current[2]
-                ax  = x_current[3]
-                ay  = x_current[4]
-                az  = x_current[5]
-                r   = x_current[6]
+                d  = x_current[0]
+                theta  = x_current[1]
+                phi  = x_current[2]
+                alpha  = x_current[3]
+                r  = x_current[4]
+
 
                 #quadratic loss update
                 lm_F_x0_cylinder = lm_F_x0_delta_cylinder
