@@ -26,7 +26,8 @@ import time
 import sympy as sp
 from sympy.utilities.autowrap import autowrap
 from sympy.vector import CoordSys3D
-
+from SO3 import SO3
+from SE3 import SE3
 
 class Segmentation:
 
@@ -123,7 +124,6 @@ class Segmentation:
 
     @staticmethod
     def normals(Xi):
-
 
         #calculatetion of nomals
         xm = np.mean(Xi,axis = 0)
@@ -248,7 +248,7 @@ class Segmentation:
 
             Cosine_Similarity[i] = np.dot(anorm, bnorm)
 
-            temp_index = np.where(Cosine_Similarity[i] > 0.65) ## 0.75 is good
+            temp_index = np.where(Cosine_Similarity[i] > 0.75) ## 0.75 is good
 
             #keep points that does not span a crease
             if len(temp_index[0]) >  29:
@@ -327,9 +327,9 @@ class Segmentation:
                         cv2.imshow("Image",frame_markers)
                         cv2.waitKey(1)
 
-                    np.savetxt('camera/frame2.txt', cam2markerHom)
+                    np.savetxt('camera/frame3.txt', cam2markerHom)
         if read_from_file == True:
-            cam2markerHom = np.loadtxt('camera/frame2.txt')
+            cam2markerHom = np.loadtxt('camera/frame3.txt')
 
 
         #define the markers corner in bin the bin frame
@@ -834,22 +834,6 @@ class Segmentation:
 
         # print(vector_p,'vector_p')
 
-        # print(vector_p,'vector_p')
-        # print(type(vector_p),'vector_p')
-        # print(vector_p[0],'vector_p')
-        # print(shape(vector_p),'vector_p')
-        #
-        # print(vector_a,'vector_a')
-        # print(shape(vector_a),'vector_a')
-        #
-        # print(shape((vector_mi - vector_p).T),'12 ++ 12')
-        # print(shape(vector_a * (vector_mi - vector_p).T),'123 ++ 123')
-        # print(shape(vector_a * (vector_mi - vector_p).T * vector_a),'124 ++ 124')
-        # print(shape(vector_p + vector_a * (vector_mi - vector_p).T * vector_a),' 125 ++ 125')
-        # print(vector_p + vector_a * (vector_mi - vector_p).T * vector_a - vector_mi,'126 ++ 126')
-        # print(shape(vector_p + vector_a * (vector_mi - vector_p).T * vector_a - vector_mi),'126 ++ 126')
-        # print(type(vector_p + vector_a * (vector_mi - vector_p).T * vector_a - vector_mi),'e_cylinder type')
-        # print(type(sp.sign(r)*r),'type(sp.sign(r)*r)')
 
         e_cylinder0 = ((vector_p + vector_a * (vector_mi - vector_p).T * vector_a - vector_mi)[0])**2
         e_cylinder1 = ((vector_p + vector_a * (vector_mi - vector_p).T * vector_a - vector_mi)[1])**2
@@ -859,7 +843,7 @@ class Segmentation:
 
         # e_cylinder = (vector_p + vector_a * (vector_mi - vector_p).T * vector_a - vector_mi) - sp.sign(r)*r
 
-        print(e_cylinder,'e_cylinder')
+        # print(e_cylinder,'e_cylinder')
         # print(shape(e_cylinder),'e_cylinder')
 
 
@@ -871,7 +855,7 @@ class Segmentation:
 
         lambdified_jacobian_cylinder  = sp.Matrix([deriv_d, deriv_theta, deriv_phi, deriv_alpha, deriv_r])
         lambdified_jacobian_cylinder  = lambdified_jacobian_cylinder.subs(sp.diff(sp.sign(r), r), 0)
-        lambdified_jacobian_cylinder  = autowrap(lambdified_jacobian_cylinder , backend="cython", args = [d, phi, theta, alpha, mix, miy, miz, r])
+        lambdified_jacobian_cylinder  = autowrap(lambdified_jacobian_cylinder , backend="f2py", args = [d, phi, theta, alpha, mix, miy, miz, r])
 
 
         return lambdified_jacobian_cylinder
@@ -884,9 +868,14 @@ class Segmentation:
 
         pcd.points = o3d.utility.Vector3dVector(xyz)
 
-        o3d.io.write_point_cloud("camera/pcddata.pcd", pcd)
+        o3d.io.write_point_cloud("camera/pcddata_cylinder.pcd", pcd, print_progress = True)
 
-        # pcd = o3d.io.read_point_cloud("camera/pcddata.pcd")
+        pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.005, max_nn=30))
+
+        pcd_xyz = np.asarray(pcd.points)
+        pcd_normals = np.asarray(pcd.normals)
+
+        # pcd = o3d.io.read_point_cloud("camera/pcddata_cylinder.pcd")
         #
         # xyz     = np.asarray(pcd.points)
 
@@ -944,7 +933,10 @@ class Segmentation:
 
             # print(clusters,'clusters')
 
+            print(len(pcd_normals),'pcd_normals')
+            print(len(clusters),'clusters')
 
+            # cluster_normals = pcd_normals
 
             #####################################################################################################################
             ################################################## plane ###########################################################
@@ -1188,8 +1180,16 @@ class Segmentation:
         lm_f0 = np.sqrt((mix - cx)**2 + (miy - cy)**2  + (miz - cz)**2) - abs(r)
 
 
+        print(shape(lm_f0),'shape(lm_f0)')
+        print(shape(lm_jacobian_sphere),'shape(lm_jacobian_sphere)')
+        print(shape(lm_delta),'shape(lm_delta)')
+        print(shape(lm_hessian),'shape(lm_hessian)')
+
+
         #quadratic loss first round
-        lm_F_x0 = np.dot(np.transpose(lm_f0),lm_f0) + 2 * np.dot(np.dot(np.transpose(lm_f0),lm_jacobian_sphere) , lm_delta) + np.dot(np.transpose(lm_delta),np.dot(lm_hessian,lm_delta))
+        lm_F_x0 = np.dot(np.transpose(lm_f0),lm_f0)\
+                  + 2 * np.dot(np.dot(np.transpose(lm_f0),lm_jacobian_sphere), lm_delta)\
+                  + np.dot(np.transpose(lm_delta),np.dot(lm_hessian,lm_delta))
 
         for q in range(100):
 
@@ -1284,7 +1284,10 @@ class Segmentation:
             print(x_current,'x_current')
             print(LA.norm(lm_delta),'LA.norm(lm_delta)')
 
-
+        cx_sphere  = x_current[0]
+        cy_sphere  = x_current[1]
+        cz_sphere  = x_current[2]
+        r_sphere   = x_current[3]
 
         end_timer = time.perf_counter()
         final_time = end_timer - start_timer
@@ -1306,104 +1309,147 @@ class Segmentation:
 
 
         ni = np.mean(cluster_normals,axis = 0)
+
         n_bar = ni/np.linalg.norm(ni)
 
         ## initialize z axis
-        z_hat = np.array([0,0,-1])
+        z_hat = np.array([0,0,1])
 
         r_theta = np.arccos(np.dot(n_bar,z_hat))
         r_A = np.cross(n_bar,z_hat)
-
+        print(r_theta,'r_theta')
         ## Rodrigues formula`tion for rmat
+
         skew_w = np.array([[0,-r_A[2],r_A[1]],[r_A[2],0,-r_A[0]],[-r_A[1],r_A[0],0]])
 
         r_mat = np.eye(3) + skew_w + (skew_w.dot(skew_w))/(1+np.cos(r_theta))
 
         ni_apo = np.transpose(np.dot(np.squeeze(r_mat),np.transpose(cluster_normals)))
 
-        ni_apo_mean = np.mean(np.transpose(ni_apo),axis = 1)
-        n_bar_apo = (ni_apo_mean/np.linalg.norm(ni_apo_mean))
+        # cov_mat = (1/len(ni_apo.shape[0])) * \
+        #                (np.dot( np.transpose( np.squeeze(ni_apo) - (ni_apo_mean)), ( np.squeeze(ni_apo) - (ni_apo_mean))))
 
+        ni_apo = ni_apo[:, :2]
 
-        mi = np.mean(clusters,axis = 0)
-        m_bar = mi/np.linalg.norm(mi)
+        print(ni_apo,'ni_apo')
+        print(shape(ni_apo),'ni_apo')
 
+        cov_mat = (1/ni_apo.shape[0]) * (ni_apo.T).dot(ni_apo)
 
-        r_theta_m = np.arccos(np.dot(m_bar,z_hat))
-        r_A_m = np.cross(m_bar,z_hat)
-
-        ## Rodrigues formulation for rmat
-        skew_w_m = np.array([[0,-r_A_m[2],r_A_m[1]],[r_A_m[2],0,-r_A_m[0]],[-r_A_m[1],r_A_m[0],0]])
-
-        r_mat_m = np.eye(3) + skew_w + (skew_w.dot(skew_w))/(1+np.cos(r_theta_m))
-
-        mi_apo = np.transpose(np.dot(np.squeeze(r_mat_m),np.transpose(clusters)))
-
-        mi_apo_mean = np.mean(np.transpose(mi_apo),axis = 1)
-        m_bar_apo = (mi_apo_mean/np.linalg.norm(mi_apo_mean))
-
-        print(m_bar_apo,'m_bar_apo')
-
-
-        cov_mat = (1/len(ni_apo)) * \
-                       (np.dot( np.transpose( np.squeeze(ni_apo) - (ni_apo_mean)), ( np.squeeze(ni_apo) - (ni_apo_mean))))
+        print(cov_mat,'cov_mat')
 
         w,v = LA.eig(cov_mat)
 
         #sort normals
-        idx = w.argsort()
+        idx = w.argsort()[::-1]
 
+        print(w,'w')
+        print(idx,'idx')
         v = v[:,idx]
 
+        print(v,'v')
+
         #keep the smalles normals
-        amin = v[:,0]
+        amin = np.array([v[1,0],v[1,1], 0 ])
+
+        print(amin,'amin')
 
         a0 = np.dot(inv(r_mat),amin)
 
-        # print(amin,'amin')
+        print(a0,'a0')
+
+        ## above should be fine in accordance with help code
+        ## a0 looks ok
+
+        if a0[2] >  0:
+            z_hat = np.array([0,0,-1])
+        else:
+            z_hat = np  .array([0,0,1])
+
+        print(z_hat,'z_hat')
+
+        A0_theta = np.arccos(np.dot(a0, z_hat))
+        A0_A = np.cross(a0,z_hat)
+
+        ## Rodrigues formula`tion for rmat
+
+        skew_w = np.array([[0,-A0_A[2],A0_A[1]],[A0_A[2],0,-A0_A[0]],[-A0_A[1],A0_A[0],0]])
+
+        r_mat_a0 = np.eye(3) + skew_w + (skew_w.dot(skew_w))/(1+np.cos(A0_theta))
 
 
+        reorient_cluster_normal = np.transpose(np.dot(r_mat_a0,np.transpose(cluster_normals)))
+        reorient_cluster_normal[:,2] = 0
+        print(shape(reorient_cluster_normal),'reorient_cluster_normal')
+
+        reorient_cluster_xyz = np.transpose(np.dot(r_mat_a0, clusters.transpose()))
+        reorient_cluster_xyz[:,2]    = 0
+
+        print(shape(reorient_cluster_normal),'reorient_cluster_normal')
+        print(shape(reorient_cluster_xyz),'reorient_cluster_xyz')
+
+        r0 = -(np.dot(len(reorient_cluster_xyz), np.sum(np.dot(np.transpose(np.squeeze(reorient_cluster_normal)) , reorient_cluster_xyz))) \
+              - np.dot((np.sum(np.transpose(reorient_cluster_normal))) , np.sum(reorient_cluster_xyz))) \
+                /((len(reorient_cluster_xyz) * (np.sum(np.dot(np.transpose(reorient_cluster_normal),reorient_cluster_normal)))) \
+                -(np.dot(np.sum(np.transpose(reorient_cluster_normal)),np.sum(reorient_cluster_normal))))
+
+        print(r0,'r0')
+
+        # t1 = np.sum(reorient_cluster_xyz * reorient_cluster_normal)
+        # t2 = np.sum(np.sum(reorient_cluster_xyz, axis=0) * np.sum(reorient_cluster_normal, axis=0))
+        # t3 = np.sum(reorient_cluster_normal * reorient_cluster_normal)
+        # t4 = np.sum(np.sum(reorient_cluster_normal, axis=0) * np.sum(reorient_cluster_normal, axis=0))
+        #
+        # r0 = -(no_pts*t1 - t2)/(no_pts*t3 - t4)
 
 
-        r0 = -(np.dot(len(ni_apo), np.sum(np.dot(np.transpose(np.squeeze(mi_apo)) , ni_apo))) \
-              - np.dot((np.sum(np.transpose(mi_apo))),np.sum(ni_apo))) \
-                /((len(ni_apo)*(np.sum(np.dot(np.transpose(ni_apo),ni_apo)))) \
-                -(np.dot(np.sum(np.transpose(ni_apo)),np.sum(ni_apo))))
+        print(shape(reorient_cluster_normal),'reorient_cluster_normal')
+        print(shape(reorient_cluster_xyz),'reorient_cluster_xyz')
+        print((reorient_cluster_normal[0]),'reorient_cluster_normal')
+        print((reorient_cluster_xyz[0]),'reorient_cluster_xyz')
 
-        c0_apo = np.squeeze((1/len(ni_apo))*(np.sum(np.dot(r0,ni_apo)+(mi_apo),axis = 0)))
+        c0_apo = np.squeeze((1/len(reorient_cluster_xyz))\
+                    *(np.sum(r0*reorient_cluster_normal+(reorient_cluster_xyz),axis = 0)))
+
 
         print(c0_apo,'c0_apo')
+        print(r_mat,'r_mat')
+        print(r_mat_a0,'r_mat_a0')
 
         c0_apo = np.squeeze(c0_apo)
         a0 = np.squeeze(a0)
 
-        c0 = np.dot(inv(r_mat),c0_apo)
+        c0 = np.dot(inv(r_mat_a0),c0_apo)
+
 
         print(a0,'a0')
         print(c0,'c0')
         print(r0,'r0')
 
 
+
         p0 = c0 - np.dot(a0,np.dot(np.transpose(c0),a0))
 
         print(p0,'p0')
 
-        n_polar = p0/np.linalg.norm(p0)
+        d0 = np.linalg.norm(p0)
 
-        n_polar_theta = np.arctan(n_polar[1]/n_polar[0])
-
-        n_polar_phi = np.arccos(n_polar[2]/np.linalg.norm(p0))
-
-        d = np.linalg.norm(p0)
+        n_polar = p0/d0
 
         print(n_polar,'n_polar')
+
+        n_polar_theta = np.arctan2(np.sqrt(n_polar[0]*n_polar[0] + n_polar[1]*n_polar[1]), n_polar[2])
+
+        n_polar_phi = np.arctan2(n_polar[1],n_polar[0])
+
+
         print(n_polar_theta,'n_polar_theta')
         print(n_polar_phi,'n_polar_phi')
-        print(d ,'d ')
+        print(d0 ,'d0 ')
 
-        n_theta = np.transpose(np.array([ cos(n_polar_phi)*sin(n_polar_theta) , sin(n_polar_phi)*cos(n_polar_theta) , cos(n_polar_theta) ]))
+        n_theta = np.transpose(np.array([ np.cos(n_polar_phi)*np.cos(n_polar_theta) , np.sin(n_polar_phi)*np.cos(n_polar_theta) , -np.sin(n_polar_theta) ]))
 
-        n_phi = np.array([-sin( n_polar_phi ), cos(n_polar_theta) , 0 ])
+        n_phi = np.array([-np.sin( n_polar_phi ), np.cos(n_polar_phi) , 0 ])
 
         cos_alpha = (float((a0[0]      * n_phi[1] - a0[1]      * n_phi[0])/\
                             (n_theta[0] * n_phi[1] - n_theta[1] * n_phi[0]  )))
@@ -1414,30 +1460,58 @@ class Segmentation:
 
         alpha0 = np.arctan2(sin_alpha, cos_alpha)
 
-        print(type(alpha0),'type(alpha0)')
-        print(type(cos_alpha),'type(cos_alpha)')
-        print(type(sin_alpha),'type(sin_alpha)')
+
+        print(cos_alpha,'cos_alpha')
+        print(sin_alpha,'sin_alpha')
+        print(alpha0,'alpha0')
+
+
+        # cos_alpha = a0[2]/n_theta[2]
+        #
+        # sin_alpha = (a0[0] - n_theta[0]*a0[2]/n_theta[2])/n_phi[0]
+        #
+        # print(cos_alpha,'cos_alpha')
+        # print(sin_alpha,'sin_alpha')
+
+
+        alpha0 = np.arctan2(sin_alpha, cos_alpha)
+
+
+        print(d0,'d0')
+        print(n_polar_theta,'n_polar_theta')
+        print(n_polar_phi,'n_polar_phi')
+        print(alpha0,'alpha0')
+        print(r0,'r0')
+
+        initial_est = np.array([ [d0], [n_polar_theta] , [n_polar_phi] , [alpha0] ,[r0] ])
+
+        # print(type(alpha0),'type(alpha0)')
+        # print(type(cos_alpha),'type(cos_alpha)')
+        # print(type(sin_alpha),'type(sin_alpha)')
 
         pcd.points = o3d.utility.Vector3dVector(xyz)
         print(f'Center of pcd: {pcd.get_center()}')
 
 
 
-        vector_n = np.array([[cos(n_polar_phi) * cos(n_polar_theta) ], \
-                           [sin(n_polar_phi) * sin(n_polar_theta) ], \
-                           [cos(n_polar_theta)                    ]])
+        vector_n = np.array([[np.cos(n_polar_phi) * np.sin(n_polar_theta) ], \
+                           [np.sin(n_polar_phi) * np.sin(n_polar_theta) ], \
+                           [np.cos(n_polar_theta)                    ]])
 
-        vector_n_theta = np.array([[cos(n_polar_phi) * cos(n_polar_theta) ], \
-                                 [sin(n_polar_phi) * sin(n_polar_theta) ], \
-                                 [-sin(n_polar_theta)                   ]])
+        vector_n_theta = np.array([[np.cos(n_polar_phi) * np.cos(n_polar_theta) ], \
+                                 [np.sin(n_polar_phi) * np.cos(n_polar_theta) ], \
+                                 [-np.sin(n_polar_theta)                   ]])
 
-        vector_n_phi = np.array([[-sin(n_polar_phi)   ], \
-                              [cos(n_polar_phi)    ], \
+        vector_n_phi = np.array([[-np.sin(n_polar_phi)   ], \
+                              [np.cos(n_polar_phi)    ], \
                               [0                   ]])
 
-        vector_a = np.squeeze((vector_n_theta * cos(alpha0) + vector_n_phi * sin(alpha0)))
+        vector_a = np.squeeze(( vector_n_theta * np.cos(alpha0) + vector_n_phi * np.sin(alpha0) ))
 
         vector_a = np.array([[vector_a[0]],[vector_a[1]] ,[vector_a[2]] ])
+
+        print(vector_a,'vector_a')
+
 
         mix = np.squeeze(np.transpose(clusters)[0,:])
         miy = np.squeeze(np.transpose(clusters)[1,:])
@@ -1445,7 +1519,7 @@ class Segmentation:
 
         vector_mi = np.transpose(np.array([ mix, miy, miz ]))
 
-        vector_p = np.squeeze(np.transpose(d*vector_n ))
+        vector_p = np.squeeze(np.transpose(d0*vector_n ))
 
         vector_p = np.array([[vector_p[0]],[vector_p[1]] ,[vector_p[2]] ])
 
@@ -1454,48 +1528,43 @@ class Segmentation:
 
         cylinder_D = np.transpose(vector_p + vector_a * np.transpose(vector_mi - np.transpose(vector_p)) * vector_a - np.transpose(vector_mi))
 
-        lm_f_x0_cylinder_temp = []
+        #error
+        lm_f_x0_cylinder = (np.linalg.norm(cylinder_D, axis = 1) - abs(r)).reshape((no_pts, 1))
 
-        for i in range(len(cylinder_D)):
-            lm_f_x0_cylinder_temp.append((math.sqrt(cylinder_D[i][0]**2 + cylinder_D[i][1]**2 + cylinder_D[i][2]**2 ) - abs(r0))**2 )
+        #lost
+        lm_F_x0_cylinder = np.sum( lm_f_x0_cylinder * lm_f_x0_cylinder )/ clusters.shape[0]
 
-        # print(len(lm_f_x0_cylinder_temp),'len(lm_f_x0_cylinder)')
-        # print(len(cylinder_D),'len(cylinder_D)')
-
-        #error 0
-        lm_f_x0_cylinder = np.sum(lm_f_x0_cylinder_temp)
-
-        print(lm_f_x0_cylinder,'lm_f_x0_cylinder')
-
-        # print( cylinder_D[0] ,'1')
-        # print(math.sqrt(cylinder_D[0][0]**2 + cylinder_D[0][1]**2 + cylinder_D[0][2]**2 )  ,'1')
-        # print(np.shape(vector_p + vector_a * np.transpose(vector_mi - np.transpose(vector_p)) * vector_a - np.transpose(vector_mi)) ,'1')
-
-        # #error f0
-        # lm_f_x0_cylinder = math.sqrt((vector_p + vector_a * np.transpose(vector_mi - np.transpose(vector_p)) * vector_a - np.transpose(vector_mi))[0]**2 +\
-        #                              (vector_p + vector_a * np.transpose(vector_mi - np.transpose(vector_p)) * vector_a - np.transpose(vector_mi))[1]**2 +\
-        #                              (vector_p + vector_a * np.transpose(vector_mi - np.transpose(vector_p)) * vector_a - np.transpose(vector_mi))[2]**2 )\
-        #                                 - abs(r0)
-
-        # print(lm_f_x0_cylinder,'lm_f_x0_cylinder')
+        print(lm_F_x0_cylinder,'lm_F_x0_cylinder')
 
 
+
+        vector_a = np.squeeze(np.transpose(vector_a))
+        vector_p = np.squeeze(np.transpose(vector_p))
+
+        print(np.shape(clusters),'clusters')
+        print(np.shape(vector_p),'vector_p')
+        print((vector_p),'vector_p')
+        print(np.shape(vector_a),'vector_a')
+        print((vector_a),'vector_a')
+
+        temp                 = np.sum(((clusters) - vector_p)*vector_a, axis = 1).reshape((no_pts, 1))
+        D                    = vector_p + temp.dot(vector_a.reshape((1, 3))) - clusters
+        signed_distances     = (np.linalg.norm(D, axis = 1) - abs(r)).reshape((no_pts, 1))
+        # print(signed_distances,'signed_distances')
+
+        lm_F_x0_cylinder                 = np.sum(signed_distances*signed_distances) / no_pts
+
+        print(lm_F_x0_cylinder,'lm_F_x0_cylinder')
+
+        lm_f0_cylinder = lm_f_x0_cylinder
+
+        lm_f0_cylinder = signed_distances
 
         no_pts = clusters.shape[0]
 
-        print(d ,'d')
-        print(n_polar_theta ,'n_polar_theta')
-        print(n_polar_phi ,'n_polar_phi')
-        print(alpha0 ,'alpha0')
-        print(r0 ,'r0')
-
-        initial_est = np.array([ [d], [n_polar_theta] , [n_polar_phi] , [alpha0] ,[r0] ])
-
-        print(initial_est,'initial_est')
-
         jac_input_vector_cylinder = np.append(clusters,np.ones((no_pts, 1)).dot(np.transpose(initial_est)),axis = 1)
 
-        lambdifing_jacobian_cylinder  = seg.lambdifing_jacobian_cylinder ()
+        lambdifing_jacobian_cylinder  = seg.lambdifing_jacobian_cylinder()
 
         lm_jacobian_cylinder_forloop = []
         for m in range(len(jac_input_vector_cylinder)):
@@ -1512,85 +1581,118 @@ class Segmentation:
         c = 2
 
         count = 0
-        first_loop = True
 
         countapp = []
         lm_F_x0_app = []
         # jacobian_cylinder_forloop = []
 
-        x_current = np.array([ [d], [n_polar_theta] , [n_polar_phi] , [alpha0] ,[r0] ])
+        x_current = initial_est
 
-        no_pts = clusters.shape[0]
-        initial_est = np.array([ [d], [n_polar_theta] , [n_polar_phi] , [alpha0] ,[r0] ])
+        print(x_current,'x_current')
 
-        jac_input_vector_cylinder = np.append(clusters,np.ones((no_pts, 1)).dot(np.transpose(initial_est)),axis = 1)
+        d = d0
+        theta = n_polar_theta
+        phi = n_polar_phi
+        alpha = alpha0
+        r = r0
 
-        # lm_jacobian_cylinder_forloop = []
-        # for m in range(len(jac_input_vector_cylinder)):
-        #     lm_jacobian_cylinder_forloop.append(seg.compute_jacobian_cylinder_loop( lambdifing_jacobian_cylinder, jac_input_vector_cylinder[m, :]) )
-        # lm_jacobian_cylinder = np.array(lm_jacobian_cylinder_forloop)
+        print(d0,'d0')
+        print(theta,'theta')
+        print(phi,'phi')
+        print(alpha,'alpha')
+        print(r,'r')
 
         lm_hessian_cylinder = np.dot(np.transpose(lm_jacobian_cylinder),lm_jacobian_cylinder)
-
-        lm_f0_cylinder = lm_f_x0_cylinder
-
-        #quadratic loss first round
-        lm_F_x0_cylinder = np.dot(np.transpose(lm_f0_cylinder),lm_f0_cylinder)\
-                           + 2 * np.dot(np.dot(np.transpose(lm_f0_cylinder),lm_jacobian_cylinder) , lm_delta_cylinder)\
-                           + np.dot(np.transpose(lm_delta_cylinder),np.dot(lm_hessian_cylinder,lm_delta_cylinder))
 
         for q in range(100):
 
             count += 1
 
-            lm_hessian_lamda_I = np.identity(4) * lamda
+            print(count,'count')
+            print(lamda,'lamda')
 
-            lm_delta_cylinder = -np.dot( inv(np.dot(np.transpose(lm_jacobian_cylinder),lm_jacobian_cylinder)), (np.dot(np.transpose(lm_jacobian_cylinder),startf0)))
+            lm_hessian_lamda_I = np.identity(5) * lamda
+
+
+            # lm_delta_cylinder = -np.dot( inv(np.dot(np.transpose(lm_jacobian_cylinder),lm_jacobian_cylinder)), (np.dot(np.transpose(lm_jacobian_cylinder),startf0)))
+            lm_delta_cylinder = -np.dot(inv(lm_hessian_cylinder + lm_hessian_lamda_I), (np.dot(np.transpose(lm_jacobian_cylinder),lm_f0_cylinder)))
 
             #solution temp
             delta_x = np.array([d + lm_delta_cylinder[0], theta + lm_delta_cylinder[1], phi + lm_delta_cylinder[2],\
-                                 alpha + lm_delta_cylinder[3], abs(r) + lm_delta_cylinder[4]])
+                                alpha + lm_delta_cylinder[3], abs(r) + lm_delta_cylinder[4]])
 
-            #error f0
-            vector_n = np.array([[cos(delta_x[2]) * cos(delta_x[1]) ], \
-                               [sin(delta_x[2]) * sin(delta_x[1]) ], \
-                               [cos(delta_x[1])                    ]])
+            print(lm_delta_cylinder,'lm_delta_cylinder')
 
-            vector_n_theta = np.array([[cos(delta_x[2]) * cos(delta_x[1]) ], \
-                                     [sin(delta_x[2]) * sin(delta_x[1]) ], \
-                                     [-sin(delta_x[1])                   ]])
 
-            vector_n_phi = np.array([[-sin(delta_x[2])   ], \
-                                  [cos(delta_x[2])    ], \
-                                  [0                   ]])
+            # error lm_f_x0_cylinder delta
+            vector_n = np.array([[np.cos(delta_x[2]) * np.sin(delta_x[1]) ], \
+                               [np.sin(delta_x[2]) * np.sin(delta_x[1]) ], \
+                               [np.cos(delta_x[1])                    ]])
 
-            vector_a = np.squeeze((vector_n_theta * cos(delta_x[3]) + vector_n_phi * sin(delta_x[3])))
+            vector_n_theta = np.array([[np.cos(delta_x[2]) * np.cos(delta_x[1]) ], \
+                                     [np.sin(delta_x[2]) * np.cos(delta_x[1]) ], \
+                                     [-np.sin(delta_x[1])                   ]])
 
-            vector_a = np.array([[vector_a[0]],[vector_a[1]] ,[vector_a[2]] ])
+            vector_n_phi = np.array([[-np.sin(delta_x[2])], \
+                                     [np.cos(delta_x[2]) ], \
+                                     [0                   ]])
+
+            vector_n_phi = np.array([vector_n_phi[0][0], vector_n_phi[1][0] , vector_n_phi[2]])
+
+            vector_a = np.squeeze(( vector_n_theta * np.cos(delta_x[3]) + vector_n_phi * np.sin(delta_x[3]) ))
+
+            vector_a = (np.array([[vector_a[0][0]],[vector_a[1][1]] ,[vector_a[2][2]] ]))
+
+
+            mix = np.squeeze(np.transpose(clusters)[0,:])
+            miy = np.squeeze(np.transpose(clusters)[1,:])
+            miz = np.squeeze(np.transpose(clusters)[2,:])
+
+            vector_mi = np.transpose(np.array([ mix, miy, miz ]))
 
             vector_p = np.squeeze(np.transpose(delta_x[0]*vector_n ))
 
             vector_p = np.array([[vector_p[0]],[vector_p[1]] ,[vector_p[2]] ])
 
-            cylinder_D = np.transpose(vector_p + vector_a * np.transpose(vector_mi - np.transpose(vector_p)) * vector_a - np.transpose(vector_mi))
 
-            lm_f0_delta_cylinder = []
+            # cylinder_D = np.transpose(vector_p + vector_a\
+            #              * np.transpose(vector_mi - np.transpose(vector_p)) * vector_a\
+            #               - np.transpose(vector_mi))
 
-            for i in range(len(cylinder_D)):
-                lm_f0_delta_cylinder.append((math.sqrt(cylinder_D[i][0]**2 + cylinder_D[i][1]**2 + cylinder_D[i][2]**2 ) - abs(delta_x[4]))**2 )
+            # #error
+            # lm_f0_delta_cylinder = (np.linalg.norm(cylinder_D, axis = 1) - abs(delta_x[4])).reshape((no_pts, 1))
+            #
+            # #quadratlm_F_x0ic loss temp
+            # lm_F_x0_delta_cylinder = np.sum(lm_f0_delta_cylinder * lm_f0_delta_cylinder)/no_pts
 
-            #error 0
-            lm_f0_delta_cylinder = np.sum(lm_f0_delta_cylinder)
 
+            vector_a = np.squeeze(np.transpose(vector_a))
+            vector_p = np.squeeze(np.transpose(vector_p))
 
-            #quadratlm_F_x0ic loss temp
-            lm_F_x0_delta_cylinder = np.sum(lm_f0_delta_cylinder * lm_f0_delta_cylinder)/x_current.shape[0]
+            # print(np.shape(clusters),'clusters')
+            # print(np.shape(vector_p),'vector_p')
+            # print((vector_p),'vector_p')
+            # print(np.shape(vector_a),'vector_a')
+            # print((vector_a),'vector_a')
+
+            temp                 = np.sum(((clusters) - vector_p)*vector_a, axis = 1).reshape((no_pts, 1))
+            D                    = vector_p + temp.dot(vector_a.reshape((1, 3))) - clusters
+            signed_distances     = (np.linalg.norm(D, axis = 1) - abs(r)).reshape((no_pts, 1))
+            # print(signed_distances,'signed_distances')
+
+            lm_F_x0_delta_cylinder                 = np.sum(signed_distances*signed_distances) / no_pts
+
+            # print(lm_F_x0_delta_cylinder,'lm_F_x0_delta_cylinder')
 
             countapp.append(count)
             lm_F_x0_app.append(lm_F_x0_cylinder)
 
             if(LA.norm(lm_delta_cylinder) <= eps ):
                 break
+
+            print(lm_F_x0_delta_cylinder,'lm_F_x0_delta_cylinder')
+            print(lm_F_x0_cylinder,'lm_F_x0_cylinder')
+            print(x_current,'x_current')
 
             if ( lm_F_x0_delta_cylinder < lm_F_x0_cylinder):
 
@@ -1609,13 +1711,15 @@ class Segmentation:
                 lm_F_x0_cylinder = lm_F_x0_delta_cylinder
 
                 #error update
-                lm_f0_cylinder = lm_f0_delta_cylinder
+                lm_f0_cylinder = signed_distances
 
                 clusters = np.squeeze(np.asarray(clusters))
-                no_pts = clusters.shape[0]
-                initial_est = np.array([[px],[py],[pz],[ax],[ay],[az],[r]])
 
-                jac_input_vector_cylinder = np.append(clusters,np.ones((no_pts, 1)).dot(np.transpose(initial_est)),axis = 1)
+                # x_current = np.array([ [d], [theta] , [phi] , [alpha] ,[r] ])
+
+                jac_input_vector_cylinder = np.append(clusters,np.ones((no_pts, 1)).dot(np.transpose(x_current)),axis = 1)
+
+                # lambdifing_jacobian_cylinder  = seg.lambdifing_jacobian_cylinder ()
 
                 lm_jacobian_cylinder_forloop = []
                 for m in range(len(jac_input_vector_cylinder)):
@@ -1627,6 +1731,85 @@ class Segmentation:
             else:
                 lamda = c * lamda
 
+        ################################### after loop #####################################
+
+        # x_current = np.array([[0.50015691], [0.6259656], [0.82009577], [0.22393045], [0.02720507 ]])
+
+        # error lm_f_x0_cylinder delta
+        vector_n = np.array([[np.cos(x_current[2]) * np.sin(x_current[1]) ], \
+                           [np.sin(x_current[2]) * np.sin(x_current[1]) ], \
+                           [np.cos(x_current[1])                    ]])
+
+        vector_n_theta = np.array([[np.cos(x_current[2]) * np.cos(x_current[1]) ], \
+                                 [np.sin(x_current[2]) * np.cos(x_current[1]) ], \
+                                 [-np.sin(x_current[1])                   ]])
+
+        vector_n_phi = np.array([[-np.sin(x_current[2])], \
+                                 [np.cos(x_current[2]) ], \
+                                 [0                   ]])
+
+        vector_n_phi = np.array([vector_n_phi[0][0], vector_n_phi[1][0] , vector_n_phi[2]])
+
+        vector_a = np.squeeze(( vector_n_theta * np.cos(x_current[3]) + vector_n_phi * np.sin(x_current[3]) ))
+
+        vector_a = (np.array([[vector_a[0][0]],[vector_a[1][1]] ,[vector_a[2][2]] ]))
+
+
+        mix = np.squeeze(np.transpose(clusters)[0,:])
+        miy = np.squeeze(np.transpose(clusters)[1,:])
+        miz = np.squeeze(np.transpose(clusters)[2,:])
+
+        vector_mi = np.transpose(np.array([ mix, miy, miz ]))
+
+        vector_p = np.squeeze(np.transpose(x_current[0]*vector_n ))
+
+        vector_p = np.array([[vector_p[0]],[vector_p[1]] ,[vector_p[2]] ])
+
+
+        # cylinder_D = np.transpose(vector_p + vector_a\
+        #              * np.transpose(vector_mi - np.transpose(vector_p)) * vector_a\
+        #               - np.transpose(vector_mi))
+
+        # #error
+        # lm_f0_delta_cylinder = (np.linalg.norm(cylinder_D, axis = 1) - abs(delta_x[4])).reshape((no_pts, 1))
+        #
+        # #quadratlm_F_x0ic loss temp
+        # lm_F_x0_delta_cylinder = np.sum(lm_f0_delta_cylinder * lm_f0_delta_cylinder)/no_pts
+
+
+        vector_a = np.squeeze(np.transpose(vector_a))
+        vector_p = np.squeeze(np.transpose(vector_p))
+
+        # print(np.shape(clusters),'clusters')
+        # print(np.shape(vector_p),'vector_p')
+        # print((vector_p),'vector_p')
+        # print(np.shape(vector_a),'vector_a')
+        # print((vector_a),'vector_a')
+
+        temp                 = np.sum(((clusters) - vector_p)*vector_a, axis = 1).reshape((no_pts, 1))
+        D                    = vector_p + temp.dot(vector_a.reshape((1, 3)))
+        signed_distances     = (np.linalg.norm(D, axis = 1) - abs(r)).reshape((no_pts, 1))
+        # print(signed_distances,'signed_distances')
+
+        lm_F_x0_delta_cylinder                 = np.sum(signed_distances*signed_distances) / no_pts
+
+        print(D ,'D ')
+
+
+        min_index = np.argmin(D[:, 0])
+        max_index = np.argmax(D[:, 0])
+
+        height_cylinder = np.linalg.norm(D[min_index, :] - D[max_index, :])
+
+        directional_vector   = (D[max_index, :] - D[min_index, :])/np.linalg.norm(D[max_index, :] - D[min_index, :])
+        center_cylinder = D[min_index, :]  + directional_vector * height_cylinder/2
+
+        print(x_current,'x_current')
+
+        radius_cylinder = x_current[4]
+
+        print(center_cylinder,'center_cylinder')
+        print(height_cylinder,'height_cylinder')
 
         plt.axis([0, count, 0, np.max(lm_F_x0_app) + 0.01])
         plt.scatter(countapp, lm_F_x0_app)
@@ -1634,13 +1817,43 @@ class Segmentation:
         plt.show()
         #### sphere construction for visualization ####
 
-        center = [x_current[0],  x_current[1] , x_current[2] ]
-        # [ 0.09804494  0.05788992  0.54030654 -0.04078524]
-        radius_sphere = abs(x_current[3])
+        center_sphere = [cx_sphere,  cy_sphere , cz_sphere ]
 
-        mesh = o3d.geometry.TriangleMesh.create_sphere( radius_sphere )
+        radius_sphere = abs(r_sphere)
 
-        return mesh, center
+
+
+
+        #
+        # height_cylinder = sqrt(\
+        #                     (lm_F_x0_cylinder[min_index, :] - lm_F_x0_cylinder[max_index, :])[0]**2\
+        #                   + (lm_F_x0_cylinder[min_index, :] - lm_F_x0_cylinder[max_index, :])[1]**2\
+        #                   + (lm_F_x0_cylinder[min_index, :] - lm_F_x0_cylinder[max_index, :])[2]**2)
+        #
+
+        # height_cylinder = 0.2
+
+        mesh_sphere = o3d.geometry.TriangleMesh.create_sphere( radius_sphere )
+
+        mesh_cylinder  = o3d.geometry.TriangleMesh.create_cylinder(radius = abs(radius_cylinder), height = height_cylinder, resolution = 100)
+
+        # print(np.shape(center_cylinder),'center_cylinder')
+        # print(center_cylinder,'center_cylinder')
+        # print(np.shape(phi),'phi')
+        # print(np.squeeze(phi),'phi')
+        # print(np.shape(theta),'theta')
+        # print(theta,'theta')
+        # print(np.shape(alpha),'alpha')
+        # print(alpha,'alpha')
+
+        phi = np.squeeze(phi)
+        theta = np.squeeze(theta)
+        alpha = np.squeeze(alpha)
+
+
+        T_vis = SE3(custom = {"t": center_cylinder, "composed_rotational_components" : {"orders": ["z", "y", "z"], "angles" : [phi, theta, alpha]}}).T
+
+        return mesh_sphere, center_sphere, mesh_cylinder, center_cylinder ,T_vis, vector_a
 
 
 if __name__ == '__main__':
@@ -1701,7 +1914,7 @@ if __name__ == '__main__':
         seg.non_parametric_surface_class(crxyz, labels, neighbors)
 
 
-        mesh, center = seg.surface_estimation(crxyz, labels, neighbors)
+        mesh_sphere, center_sphere, mesh_cylinder, center_cylinder, T_vis, vector_a = seg.surface_estimation(crxyz, labels, neighbors)
 
         #visualize the pcd
         pcd.points = o3d.utility.Vector3dVector(crxyz)
@@ -1717,28 +1930,86 @@ if __name__ == '__main__':
         #cv2.imshow("depth", depth_img)
         #cv2.waitKey(1)
 
+        ## cylinder rotation
+        world_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.07, origin=[0, 0, 0])
+
+        mesh_cylinder_points = np.asarray((o3d.geometry.TriangleMesh.sample_points_uniformly(mesh_cylinder,100)).points)
+
+        vector_a = np.array([ 0.38674888,  0.74546022, -0.54287601])
+
+        r_mat_cylinder =  np.dot(np.array([0,0,1]),vector_a)
+
+        # cylinder_i = np.mean([0,0,1],axis = 0)
+        #
+        # cylinder_bar = cylinder_i/np.linalg.norm(cylinder_i)
+
+        # print(mesh_cylinder_points,'mesh_cylinder_points')
+
+        A0_theta = np.arccos(np.dot(np.array([0,0,1]), vector_a))
+        A0_A = np.cross(np.array([0,0,1]),vector_a)
+
+        print(vector_a,'vector_a')
+
+
+        ## Rodrigues formula`tion for rmat
+        skew_w = np.array([[0,-A0_A[2],A0_A[1]],[A0_A[2],0,-A0_A[0]],[-A0_A[1],A0_A[0],0]])
+
+        r_mat_cylinder = np.eye(3) + skew_w + (skew_w.dot(skew_w))/(1+np.cos(A0_theta))
+
+        mesh_cylinder.rotate(r_mat_cylinder,[0,0,0])
+        world_frame.rotate(r_mat_cylinder,[0,0,0])
+
+        mesh_cylinder.compute_vertex_normals()
+        mesh_cylinder.paint_uniform_color([0, 0.51, 0.14])
+
+
+
+        # R = SO3(ypr = np.array([0, np.pi, 0])).R
+        # mesh_cylinder.rotate(R, center=(0, 0, 0))
+        # world_frame.rotate(R, center=(0, 0, 0))
+
+        # mesh_cylinder.transform(T_vis)
+        # world_frame.transform(T_vis)
+        mesh_cylinder = mesh_cylinder + world_frame
+        models =[]
+        models.append(mesh_cylinder)
+
+        # models[0] = models[0].transform([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
+        # pcd.transform([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]])
+
+        models.append(pcd)
+        # o3d.visualization.draw_geometries(models)
+
         # check sphere center
-        print(f'Center of mesh: {mesh.get_center()}')
-        print(center,'center')
+        print(f'Center of mesh: {mesh_sphere.get_center()}')
+        print(center_sphere,'center')
 
         pcdcenter = pcd.get_center()
 
         print(f'Center of pcd: {pcd.get_center()}')
 
-        center2 = mesh.get_center() - pcd.get_center()
+        center2 = mesh_sphere.get_center() - pcd.get_center()
 
-        # mesh1 = mesh.translate((-center2[0],-center2[1],-center2[2]))
-        mesh1 = mesh.translate((center[0],center[1],center[2]))
+        # mesh_cylinder_center = mesh_cylinder.get_center() - pcd.get_center()
+
+        # print(center_cylinder,'center_cylinder')
+
+        mesh_cylinder1 = mesh_cylinder.translate((center_cylinder[0],center_cylinder[1],center_cylinder[2]))
+        world_frame1 = world_frame.translate((center_cylinder[0],center_cylinder[1],center_cylinder[2]))
+        mesh_sphere1 = mesh_sphere.translate((center_sphere[0],center_sphere[1],center_sphere[2]))
+
+        models.append(mesh_cylinder1)
 
         # print(f'Center of mesh1: {mesh1.get_center()}')
 
-        print(f'Center of mesh: {mesh.get_center()}')
+        print(f'Center of mesh: {mesh_sphere.get_center()}')
 
         ## visualize point cloud caculated from the depth image
         if added == True:
             vis.add_geometry(pcd)
             added = False
         vis.update_geometry(pcd)
-        o3d.visualization.draw_geometries([pcd,mesh1])
+        pcd.normals = o3d.utility.Vector3dVector(normals)
+        o3d.visualization.draw_geometries(models,point_show_normal=True)
         vis.poll_events()
         vis.update_renderer()

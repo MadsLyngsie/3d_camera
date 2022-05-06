@@ -119,6 +119,10 @@ class some:
 
 if __name__ == '__main__':
 
+    print(sqrt(0.0207058869923876),'0.0207058869923876')
+
+    exit()
+
     q = np.array([1,2,3])
     w = np.array([1,2,3])
     e = np.array([1,2,3])
@@ -129,6 +133,14 @@ if __name__ == '__main__':
     #
     #
     # b = Matrix([q, w, e])
+
+    t = np.array([[1,1,1],[1,1,1],[1,1,1]])
+
+    r = np.array([1,1,0])
+
+    print(np.dot(r,t),'dot______')
+
+    exit()
 
     b = np.array([q, w ,e])
 
