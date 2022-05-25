@@ -262,7 +262,7 @@ class Segmentation:
     def segmentate(self, xyz, normals, visualize):
 
         #doing a dbscan to attemp a clustering of points in the pcd
-        db = DBSCAN(eps=0.02 , min_samples=55).fit(xyz) # 0.022 & 50
+        db = DBSCAN(eps=0.02 , min_samples=60).fit(xyz) # 0.022 & 50
         core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
         core_samples_mask[db.core_sample_indices_] = True
         labels = db.labels_
@@ -294,7 +294,7 @@ class Segmentation:
             ax.add_artist(legend)
 
             ax.view_init(elev=-20., azim=280)
-            plt.savefig("clustering")
+            plt.savefig("data/clustering/clustering_save_x_100")
 
         return labels
 
@@ -360,7 +360,7 @@ class Segmentation:
         # # original
         bin_width    =  0.34 #M real is 0.34 #0.34 original
         bin_length   =  0.40 #M real is 0.44 #0.44 original
-        bin_height   =  0.3 #M real is 0.2 #0.5 original
+        bin_height   =  0.35 #M real is 0.2 #0.5 original
 
         # bin_width    =  0.3
         # bin_length   =  0.415
@@ -466,11 +466,45 @@ class Segmentation:
             ## normals of cluster aligned with z axis
             nj_alligned = np.dot(np.squeeze(r_mat),np.transpose(cluster_normals))
 
+            # print(nj_alligned,'nj_alligned')
+            # print(nj_alligned[0],'nj_alligned[0]')
+
+            # pcd.points = o3d.utility.Vector3dVector(clusters)
+            #
+            # o3d.visualization.draw_geometries([pcd])
+
+            print(i,'i')
+
+
 
             ## compute aligend normal centroid
             nja = np.mean(nj_alligned,axis = 1)
             nja = nja/np.linalg.norm(nja)
 
+            # print(nja,'nja')
+            #
+            # if i == 1:
+            #     fig, ax = plt.subplots()
+            #     ax.scatter(nj_alligned[0],nj_alligned[1])
+            #
+            #     ax.set_aspect('equal')
+            #     ax.grid(True, which='both')
+            #
+            #     origin = np.array([[0, 0, 0],[0, 0, 0]])
+            #
+            #     # ax.quiver(*origin, nja1[0],  nja1[1], color='r')
+            #
+            #     ax.arrow(0, 0, -0.5, 0.25, head_width=0.05, head_length=0.07, fc='red', ec='black')
+            #
+            #     ax.axhline(y=0, color='k')
+            #     ax.axvline(x=0, color='k')
+            #
+            #
+            #
+            #     plt.show()
+            #
+            #
+            # input()
 
             ## decompose the current cluster for better computation
             decomp_cluster = np.transpose(nj_alligned)
@@ -757,22 +791,22 @@ class Segmentation:
 
     # def execute_jacobian(self, input_vector):
 
-        jacobian_sphere = []
-
-        mixs,miys,mizs,cxs,cys,czs,rs = symbols('mixs,miys,mizs,cxs,cys,czs,rs')
-
-        e_sph = sqrt((mixs - cxs)**2 + (miys - cys)**2  + (mizs - czs)**2) - rs
-        # fcy = sqrt((mixs - cxs)**2 + (miys - cys)**2  + (mizs - czs)**2) - rs
-        # fcz = sqrt((mixs - cxs)**2 + (miys - cys)**2  + (mizs - czs)**2) - rs
-        # fradius = sqrt((mixs - cxs)**2 + (miys - cys)**2  + (mizs - czs)**2) - rs
-
-        self.deriv_cx = diff(e_sph,cxs)
-        self.deriv_cy = diff(e_sph,cys)
-        self.deriv_cz = diff(e_sph,czs)
-        self.deriv_r  = diff(e_sph,rs)
-        jacobian_sphere = (self.ThreadPool.map(self.compute_jacobian_sphere,input_vector))
-
-        return jacobian_sphere
+        # jacobian_sphere = []
+        #
+        # mixs,miys,mizs,cxs,cys,czs,rs = symbols('mixs,miys,mizs,cxs,cys,czs,rs')
+        #
+        # e_sph = sqrt((mixs - cxs)**2 + (miys - cys)**2  + (mizs - czs)**2) - rs
+        # # fcy = sqrt((mixs - cxs)**2 + (miys - cys)**2  + (mizs - czs)**2) - rs
+        # # fcz = sqrt((mixs - cxs)**2 + (miys - cys)**2  + (mizs - czs)**2) - rs
+        # # fradius = sqrt((mixs - cxs)**2 + (miys - cys)**2  + (mizs - czs)**2) - rs
+        #
+        # self.deriv_cx = diff(e_sph,cxs)
+        # self.deriv_cy = diff(e_sph,cys)
+        # self.deriv_cz = diff(e_sph,czs)
+        # self.deriv_r  = diff(e_sph,rs)
+        # jacobian_sphere = (self.ThreadPool.map(self.compute_jacobian_sphere,input_vector))
+        #
+        # return jacobian_sphere
 
     def lambdifing_jacobian_sphere(self):
 
@@ -873,7 +907,7 @@ class Segmentation:
 
 
         # pcd.points = o3d.utility.Vector3dVector(xyz)
-
+        #
         # o3d.io.write_point_cloud("camera/pcddata_cylinder.pcd", pcd, print_progress = True)
 
         # pcd.estimate_normals(search_param=o3d.geometry.KDTreeSearchParamHybrid(radius=0.005, max_nn=30))
@@ -908,6 +942,11 @@ class Segmentation:
 
         pcd_seg = o3d.geometry.PointCloud()
 
+        pcd_seg.points = o3d.utility.Vector3dVector(xyz)
+
+        o3d.visualization.draw_geometries([pcd_seg])
+
+
 
 
         ### loop to look at each cluter 1 by 1
@@ -940,6 +979,16 @@ class Segmentation:
             cluster_normals = np.asarray(p.map(seg.normals,clusters_ind))
 
             cluster_normals_app.append(cluster_normals)
+
+
+            # pcd.points = o3d.utility.Vector3dVector(clusters)
+            #
+            # o3d.visualization.draw_geometries([pcd])
+            #
+            # if i == 2:
+            #     seg.gaussian_image(cluster_normals)
+            #     input()
+
 
             # save cluster_normals
             # np.savetxt('camera/cluster_normals', cluster_normals)
@@ -1894,6 +1943,7 @@ class Segmentation:
 
             mesh_cylinder = mesh_cylinder + world_frame
 
+
             mesh_cylinder_app = mesh_cylinder.translate((center_cylinder[0],center_cylinder[1],center_cylinder[2]))
             world_frame_app = world_frame.translate((center_cylinder[0],center_cylinder[1],center_cylinder[2]))
 
@@ -1911,6 +1961,7 @@ class Segmentation:
             error_score_cylinder.append(lm_F_x0_cylinder)
 
 
+
             if lm_F_x0_cylinder > lm_F_x0:
                 #### sphere #####
                 plt.figure()
@@ -1919,7 +1970,7 @@ class Segmentation:
                 plt.scatter(countapp, lm_F_x0_app)
 
 
-                plt.savefig("fittingmodel"+str(i))
+                plt.savefig("data/fittingsphere/fittingmodel 100 "+str(i))
 
                 models_fit.append(mesh_sphere_app)
                 models_fit.append(world_frame_app)
@@ -1933,23 +1984,33 @@ class Segmentation:
 
                 plt.figure()
 
+                plt.xlabel('Count')
+                plt.ylabel('Distance [M]')
                 plt.axis([0, count_cylinder, 0, np.max(lm_F_x0_app_cylinder) + 0.01])
                 plt.scatter(countapp_cylinder, lm_F_x0_app_cylinder)
 
-                plt.savefig("fittingmodel"+str(i))
+                plt.savefig("data/fittingclyinder/fittingmodel 100 "+str(i))
 
                 models_fit.append(mesh_cylinder_app)
                 mesh_cylinder_app = 0
 
                 model_parameter.append(x_current)
 
+                # pcd_seg.points = o3d.utility.Vector3dVector(clusters)
+                #     # normals = seg.surface_normal_estimation(clusters, 30, False)
+                # pcd_seg.normals = o3d.utility.Vector3dVector(seg.surface_normal_estimation(clusters, 30, False))
+                #
+                # models_fit.append(pcd_seg)
+                #
+                # o3d.visualization.draw_geometries(models_fit,point_show_normal=True)
 
         # surface_class, surface_class_eig
-        with open('results.csv','a') as csvfile:
-            np.savetxt(csvfile, error_score_sphere,delimiter=',',header='error sphere ########### round 1 ########### ',fmt='%s', comments='')
+        with open('data/results/results 100.csv','a') as csvfile:
+            np.savetxt(csvfile, error_score_sphere,delimiter=',',header='error sphere ########### round 5 ########### ',fmt='%s', comments='')
             np.savetxt(csvfile,error_score_cylinder,delimiter=',',header='error cylinder',fmt='%s', comments='')
             np.savetxt(csvfile,surface_class,delimiter=',',header='surface_class',fmt='%s', comments='')
             np.savetxt(csvfile,surface_class_eig,delimiter=',',header='surface_class_eig',fmt='%s', comments='')
+
             for w in range(len(model_parameter)):
                 np.savetxt(csvfile,model_parameter[w],delimiter=',',header='model parameters '+str(w),fmt='%s', comments='')
 
@@ -2000,6 +2061,7 @@ if __name__ == '__main__':
 
         o3d.visualization.draw_geometries([pcd])
 
+
         #remove bin from point cloud
         binxyz = seg.bin_removal(xyz,read_from_file, rgb_img , draw = draw_aruco_corner, draw2d = draw2d_aruco_marker)
 
@@ -2015,8 +2077,13 @@ if __name__ == '__main__':
         #Crease_removal of the pcd
         crxyz = seg.crease_removal(frxyz,normals,neighbors)
 
+        # pcd.points = o3d.utility.Vector3dVector(crxyz)
+        #
+        # o3d.visualization.draw_geometries([pcd])
+
         #surface normals estimation of pcd and alignment to see if the result is better
         normals = seg.surface_normal_estimation(crxyz, neighbors, test_surface_normals)
+
 
         #clustering/segmentate of pcd
         labels = seg.segmentate(crxyz,normals,visualize_db_clusters)
@@ -2050,6 +2117,8 @@ if __name__ == '__main__':
         #     vis.add_geometry(pcd)
         #     added = False
         # vis.update_geometry(pcd)
+
+
         pcd.normals = o3d.utility.Vector3dVector(normals)
         o3d.visualization.draw_geometries(models_fit,point_show_normal=True)
         vis.poll_events()
